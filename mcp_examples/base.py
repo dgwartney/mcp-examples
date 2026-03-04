@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from fastmcp import FastMCP
+from starlette.middleware import Middleware as StarletteMiddleware
 
 from mcp_examples.database import DatabaseManager
 from mcp_examples.middleware import ApiKeyMiddleware
@@ -56,7 +57,9 @@ class AuthenticatedMCPServer(ABC):
         self.db_manager.init_db()
 
         self.mcp = FastMCP(name)
-        self.mcp.add_middleware(ApiKeyMiddleware(self.db_manager))
+        self._http_middleware = [
+            StarletteMiddleware(ApiKeyMiddleware, db_manager=self.db_manager)
+        ]
         self._register_tools()
 
     @abstractmethod
@@ -71,10 +74,16 @@ class AuthenticatedMCPServer(ABC):
         Starts the FastMCP server using the configured transport.
         Blocks until the server is shut down.
 
+        For HTTP transports, API key authentication middleware is
+        automatically applied, returning HTTP 401 for invalid keys.
+
         Args:
             **kwargs: Passed to ``FastMCP.run()`` (e.g. ``transport``,
                 ``host``, ``port``).
         """
+        transport = kwargs.get("transport")
+        if transport in ("sse", "streamable-http", "http"):
+            kwargs.setdefault("middleware", []).extend(self._http_middleware)
         self.mcp.run(**kwargs)
 
     def main(self) -> None:

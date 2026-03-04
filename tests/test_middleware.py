@@ -5,14 +5,30 @@ Author:
     David Gwartney <david.gwartney@gmail.com>
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock
 
 import pytest
-from fastmcp.exceptions import ToolError
-from fastmcp.server.middleware import MiddlewareContext
+from starlette.requests import Request
+from starlette.responses import Response
+from starlette.testclient import TestClient
+from starlette.applications import Starlette
+from starlette.routing import Route
+from starlette.middleware import Middleware
 
 from mcp_examples.database import DatabaseManager
 from mcp_examples.middleware import ApiKeyMiddleware
+
+
+def _make_app(db_manager):
+    """Create a minimal Starlette app with ApiKeyMiddleware for testing."""
+
+    async def homepage(request: Request):
+        return Response("ok", media_type="text/plain")
+
+    return Starlette(
+        routes=[Route("/", homepage)],
+        middleware=[Middleware(ApiKeyMiddleware, db_manager=db_manager)],
+    )
 
 
 class TestApiKeyMiddleware:
@@ -25,114 +41,84 @@ class TestApiKeyMiddleware:
         return manager
 
     @pytest.fixture
-    def middleware(self, mock_db_manager):
-        """Create an ApiKeyMiddleware instance with mock database."""
-        return ApiKeyMiddleware(mock_db_manager)
-
-    @pytest.fixture
-    def mock_context(self):
-        """Create a mock MiddlewareContext."""
-        return MagicMock(spec=MiddlewareContext)
-
-    @pytest.fixture
-    def mock_call_next(self):
-        """Create a mock call_next function."""
-        async def call_next(context):
-            return "success"
-        return call_next
+    def client(self, mock_db_manager):
+        """Create a test client with the middleware-protected app."""
+        app = _make_app(mock_db_manager)
+        return TestClient(app)
 
     def test_init(self, mock_db_manager):
-        """Test ApiKeyMiddleware initialization."""
-        middleware = ApiKeyMiddleware(mock_db_manager)
-        assert middleware.db_manager == mock_db_manager
+        """Test ApiKeyMiddleware stores db_manager."""
+        app = _make_app(mock_db_manager)
+        # Middleware is constructed lazily by Starlette; verify it works
+        mock_db_manager.validate_key.return_value = True
+        client = TestClient(app)
+        resp = client.get("/", headers={"x-api-key": "key"})
+        assert resp.status_code == 200
 
-    @pytest.mark.asyncio
-    async def test_on_request_valid_key(self, middleware, mock_context, mock_call_next, mock_db_manager):
-        """Test on_request allows valid API keys."""
+    def test_valid_key(self, client, mock_db_manager):
+        """Test middleware allows valid API keys."""
         mock_db_manager.validate_key.return_value = True
 
-        with patch("mcp_examples.middleware.get_http_headers") as mock_get_headers:
-            mock_get_headers.return_value = {"X-API-Key": "valid-key"}
+        resp = client.get("/", headers={"X-API-Key": "valid-key"})
 
-            result = await middleware.on_request(mock_context, mock_call_next)
+        assert resp.status_code == 200
+        assert resp.text == "ok"
+        mock_db_manager.validate_key.assert_called_once_with("valid-key")
 
-            assert result == "success"
-            mock_db_manager.validate_key.assert_called_once_with("valid-key")
-
-    @pytest.mark.asyncio
-    async def test_on_request_invalid_key(self, middleware, mock_context, mock_call_next, mock_db_manager):
-        """Test on_request rejects invalid API keys."""
+    def test_invalid_key(self, client, mock_db_manager):
+        """Test middleware rejects invalid API keys with HTTP 401."""
         mock_db_manager.validate_key.return_value = False
 
-        with patch("mcp_examples.middleware.get_http_headers") as mock_get_headers:
-            mock_get_headers.return_value = {"X-API-Key": "invalid-key"}
+        resp = client.get("/", headers={"X-API-Key": "invalid-key"})
 
-            with pytest.raises(ToolError, match="Unauthorized: Invalid or missing API Key"):
-                await middleware.on_request(mock_context, mock_call_next)
+        assert resp.status_code == 401
+        assert "Unauthorized" in resp.json()["error"]
 
-    @pytest.mark.asyncio
-    async def test_on_request_missing_key(self, middleware, mock_context, mock_call_next, mock_db_manager):
-        """Test on_request rejects requests without API key."""
+    def test_missing_key(self, client, mock_db_manager):
+        """Test middleware rejects requests without API key with HTTP 401."""
         mock_db_manager.validate_key.return_value = False
 
-        with patch("mcp_examples.middleware.get_http_headers") as mock_get_headers:
-            mock_get_headers.return_value = {}
+        resp = client.get("/")
 
-            with pytest.raises(ToolError, match="Unauthorized: Invalid or missing API Key"):
-                await middleware.on_request(mock_context, mock_call_next)
+        assert resp.status_code == 401
+        assert "Unauthorized" in resp.json()["error"]
 
-    @pytest.mark.asyncio
-    async def test_on_request_case_insensitive_lowercase(self, middleware, mock_context, mock_call_next, mock_db_manager):
-        """Test on_request handles lowercase x-api-key header."""
+    def test_case_insensitive_lowercase(self, client, mock_db_manager):
+        """Test middleware handles lowercase x-api-key header."""
         mock_db_manager.validate_key.return_value = True
 
-        with patch("mcp_examples.middleware.get_http_headers") as mock_get_headers:
-            mock_get_headers.return_value = {"x-api-key": "valid-key"}
+        resp = client.get("/", headers={"x-api-key": "valid-key"})
 
-            result = await middleware.on_request(mock_context, mock_call_next)
+        assert resp.status_code == 200
+        mock_db_manager.validate_key.assert_called_once_with("valid-key")
 
-            assert result == "success"
-            mock_db_manager.validate_key.assert_called_once_with("valid-key")
-
-    @pytest.mark.asyncio
-    async def test_on_request_case_insensitive_mixed(self, middleware, mock_context, mock_call_next, mock_db_manager):
-        """Test on_request handles mixed case X-Api-Key header."""
+    def test_case_insensitive_mixed(self, client, mock_db_manager):
+        """Test middleware handles mixed case X-Api-Key header."""
         mock_db_manager.validate_key.return_value = True
 
-        with patch("mcp_examples.middleware.get_http_headers") as mock_get_headers:
-            mock_get_headers.return_value = {"X-Api-Key": "valid-key"}
+        resp = client.get("/", headers={"X-Api-Key": "valid-key"})
 
-            result = await middleware.on_request(mock_context, mock_call_next)
+        assert resp.status_code == 200
+        mock_db_manager.validate_key.assert_called_once_with("valid-key")
 
-            assert result == "success"
-            mock_db_manager.validate_key.assert_called_once_with("valid-key")
-
-    @pytest.mark.asyncio
-    async def test_on_request_case_insensitive_uppercase(self, middleware, mock_context, mock_call_next, mock_db_manager):
-        """Test on_request handles uppercase X-API-KEY header."""
+    def test_case_insensitive_uppercase(self, client, mock_db_manager):
+        """Test middleware handles uppercase X-API-KEY header."""
         mock_db_manager.validate_key.return_value = True
 
-        with patch("mcp_examples.middleware.get_http_headers") as mock_get_headers:
-            mock_get_headers.return_value = {"X-API-KEY": "valid-key"}
+        resp = client.get("/", headers={"X-API-KEY": "valid-key"})
 
-            result = await middleware.on_request(mock_context, mock_call_next)
+        assert resp.status_code == 200
+        mock_db_manager.validate_key.assert_called_once_with("valid-key")
 
-            assert result == "success"
-            mock_db_manager.validate_key.assert_called_once_with("valid-key")
-
-    @pytest.mark.asyncio
-    async def test_on_request_multiple_headers(self, middleware, mock_context, mock_call_next, mock_db_manager):
-        """Test on_request extracts API key from multiple headers."""
+    def test_multiple_headers(self, client, mock_db_manager):
+        """Test middleware extracts API key from multiple headers."""
         mock_db_manager.validate_key.return_value = True
 
-        with patch("mcp_examples.middleware.get_http_headers") as mock_get_headers:
-            mock_get_headers.return_value = {
-                "Content-Type": "application/json",
-                "X-API-Key": "valid-key",
-                "User-Agent": "test-client"
-            }
+        resp = client.get("/", headers={
+            "Content-Type": "application/json",
+            "X-API-Key": "valid-key",
+            "User-Agent": "test-client",
+        })
 
-            result = await middleware.on_request(mock_context, mock_call_next)
-
-            assert result == "success"
-            mock_db_manager.validate_key.assert_called_once_with("valid-key")
+        assert resp.status_code == 200
+        mock_db_manager.validate_key.assert_called_once_with("valid-key")

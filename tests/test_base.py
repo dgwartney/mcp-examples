@@ -91,13 +91,13 @@ class TestAuthenticatedMCPServer:
             assert server.db_manager.db_path != "/tmp/env_path.db"
 
     def test_middleware_registered(self, temp_db_path):
-        """Test that ApiKeyMiddleware is registered on initialization."""
+        """Test that HTTP middleware is registered on initialization."""
         with patch.object(DatabaseManager, 'init_db'):
             server = StubMCPServer(db_path=temp_db_path)
 
-            assert hasattr(server.mcp, 'middleware')
-            assert len(server.mcp.middleware) > 0
-            assert isinstance(server.mcp.middleware[0], ApiKeyMiddleware)
+            assert hasattr(server, '_http_middleware')
+            assert len(server._http_middleware) > 0
+            assert server._http_middleware[0].cls is ApiKeyMiddleware
 
     def test_run_method_exists(self, temp_db_path):
         """Test that run method exists and is callable."""

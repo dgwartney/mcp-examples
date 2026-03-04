@@ -11,8 +11,12 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastmcp.exceptions import ToolError
-from fastmcp.server.middleware import MiddlewareContext
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.requests import Request
+from starlette.responses import Response
+from starlette.routing import Route
+from starlette.testclient import TestClient
 
 from mcp_examples.database import DatabaseManager
 from mcp_examples.middleware import ApiKeyMiddleware
@@ -97,9 +101,8 @@ class TestIntegration:
         assert db_manager.validate_key(valid_key) is True
         assert db_manager.validate_key("wrong-key") is False
 
-    @pytest.mark.asyncio
-    async def test_end_to_end_middleware_flow(self, temp_db_path):
-        """Test complete middleware authentication flow."""
+    def test_end_to_end_middleware_flow(self, temp_db_path):
+        """Test complete middleware authentication flow with HTTP status codes."""
         db_manager = DatabaseManager(temp_db_path)
         db_manager.init_db()
 
@@ -109,21 +112,23 @@ class TestIntegration:
         valid_key = cursor.fetchone()[0]
         conn.close()
 
-        middleware = ApiKeyMiddleware(db_manager)
-        mock_context = MagicMock(spec=MiddlewareContext)
+        async def homepage(request: Request):
+            return Response("authenticated", media_type="text/plain")
 
-        async def mock_call_next(context):
-            return "authenticated"
+        app = Starlette(
+            routes=[Route("/", homepage)],
+            middleware=[Middleware(ApiKeyMiddleware, db_manager=db_manager)],
+        )
+        client = TestClient(app)
 
-        with patch("mcp_examples.middleware.get_http_headers") as mock_get_headers:
-            mock_get_headers.return_value = {"X-API-Key": valid_key}
-            result = await middleware.on_request(mock_context, mock_call_next)
-            assert result == "authenticated"
+        # Valid key returns 200
+        resp = client.get("/", headers={"X-API-Key": valid_key})
+        assert resp.status_code == 200
+        assert resp.text == "authenticated"
 
-        with patch("mcp_examples.middleware.get_http_headers") as mock_get_headers:
-            mock_get_headers.return_value = {"X-API-Key": "invalid"}
-            with pytest.raises(ToolError):
-                await middleware.on_request(mock_context, mock_call_next)
+        # Invalid key returns 401
+        resp = client.get("/", headers={"X-API-Key": "invalid"})
+        assert resp.status_code == 401
 
     def test_server_initialization_creates_working_system(self, temp_db_path):
         """Test that GreetMCPServer creates a fully functional system."""

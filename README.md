@@ -44,16 +44,16 @@ This project demonstrates how to build secure MCP servers and clients with:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       MCP Client                             │
+│                       MCP Client                            │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │ MCPClientApp (CLI Interface)                           │ │
-│  │   ├─ Argument parsing (--api-key, --url, --name)      │ │
-│  │   └─ Error handling and user feedback                 │ │
+│  │   ├─ Argument parsing (--api-key, --url, --name)       │ │
+│  │   └─ Error handling and user feedback                  │ │
 │  └────────────────────────────────────────────────────────┘ │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │ MCPClient                                              │ │
-│  │   ├─ StreamableHttpTransport (X-API-Key header)       │ │
-│  │   └─ Tool invocation (greet, etc.)                    │ │
+│  │   ├─ StreamableHttpTransport (X-API-Key header)        │ │
+│  │   └─ Tool invocation (greet, etc.)                     │ │
 │  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
                             │
@@ -61,35 +61,35 @@ This project demonstrates how to build secure MCP servers and clients with:
                             │ X-API-Key: <token>
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                       MCP Server                             │
+│                       MCP Server                            │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │ MCPServer                                              │ │
-│  │   ├─ FastMCP instance                                 │ │
-│  │   └─ Tool registration                                │ │
+│  │   ├─ FastMCP instance                                  │ │
+│  │   └─ Tool registration                                 │ │
 │  └────────────────────────────────────────────────────────┘ │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │ ApiKeyMiddleware                                       │ │
-│  │   ├─ Extract X-API-Key header (case-insensitive)      │ │
-│  │   └─ Validate via DatabaseManager                     │ │
+│  │   ├─ Extract X-API-Key header (case-insensitive)       │ │
+│  │   └─ Validate via DatabaseManager                      │ │
 │  └────────────────────────────────────────────────────────┘ │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │ DatabaseManager                                        │ │
-│  │   ├─ SQLite connection management                     │ │
-│  │   ├─ Schema initialization                            │ │
-│  │   ├─ Key generation (secrets.token_urlsafe)           │ │
-│  │   └─ Key validation (parameterized queries)           │ │
+│  │   ├─ SQLite connection management                      │ │
+│  │   ├─ Schema initialization                             │ │
+│  │   ├─ Key generation (secrets.token_urlsafe)            │ │
+│  │   └─ Key validation (parameterized queries)            │ │
 │  └────────────────────────────────────────────────────────┘ │
-│                            │                                 │
-│                            ▼                                 │
-│              ┌──────────────────────────┐                    │
-│              │   api_keys.db (SQLite)   │                    │
-│              │  ┌────────────────────┐  │                    │
-│              │  │ id | key           │  │                    │
-│              │  ├────────────────────┤  │                    │
-│              │  │ 1  | abc123...     │  │                    │
-│              │  │ 2  | xyz789...     │  │                    │
-│              │  └────────────────────┘  │                    │
-│              └──────────────────────────┘                    │
+│                            │                                │
+│                            ▼                                │
+│              ┌──────────────────────────┐                   │
+│              │   api_keys.db (SQLite)   │                   │
+│              │  ┌────────────────────┐  │                   │
+│              │  │ id | key           │  │                   │
+│              │  ├────────────────────┤  │                   │
+│              │  │ 1  | abc123...     │  │                   │
+│              │  │ 2  | xyz789...     │  │                   │
+│              │  └────────────────────┘  │                   │
+│              └──────────────────────────┘                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -110,11 +110,11 @@ This project demonstrates how to build secure MCP servers and clients with:
 **Usage**:
 ```bash
 # Set for single command
-MCP_DB_PATH=/tmp/keys.db uv run my_server.py
+MCP_DB_PATH=/tmp/keys.db uv run -m mcp_examples.server
 
 # Export for session
 export MCP_DB_PATH=/var/data/api_keys.db
-uv run my_server.py
+uv run -m mcp_examples.server
 ```
 
 ## Installation
@@ -160,7 +160,7 @@ uv sync --extra test
 #### Option 1: Direct Python Execution (stdio transport)
 
 ```bash
-uv run -m mcp_examples.server    # or: uv run my_server.py (wrapper)
+uv run -m mcp_examples.server
 ```
 
 On first run, the server will generate a default API key and print it to stdout:
@@ -177,26 +177,26 @@ By default, the server creates `api_keys.db` in the project directory. You can c
 
 ```bash
 # Use custom database path
-MCP_DB_PATH=/var/data/api_keys.db uv run my_server.py
+MCP_DB_PATH=/var/data/api_keys.db uv run -m mcp_examples.server
 
 # Use database in /tmp
-MCP_DB_PATH=/tmp/mcp_keys.db uv run my_server.py
+MCP_DB_PATH=/tmp/mcp_keys.db uv run -m mcp_examples.server
 ```
 
 #### Option 2: HTTP Transport (for remote clients)
 
 ```bash
 # Using uv
-uv run fastmcp run my_server.py --transport http --port 8000
+uv run fastmcp run mcp_examples/server.py --transport http --port 8000
 
 # Using fastmcp directly
-fastmcp run my_server.py --transport http --port 8000
+fastmcp run mcp_examples/server.py --transport http --port 8000
 ```
 
 #### Option 3: Using FastMCP CLI Development Server
 
 ```bash
-fastmcp dev my_server.py
+fastmcp dev mcp_examples/server.py
 ```
 
 ### Running the Client
@@ -207,7 +207,6 @@ The client requires an API key for authentication. Use the key printed by the se
 
 ```bash
 uv run -m mcp_examples.cli --api-key YOUR_API_KEY_HERE
-# or: uv run my_client.py --api-key YOUR_API_KEY_HERE
 ```
 
 #### Custom Parameters
@@ -380,17 +379,17 @@ sqlite3 api_keys.db "DELETE FROM api_keys WHERE key = 'KEY_TO_REVOKE';"
 
 1. Start the server with HTTP transport:
    ```bash
-   uv run fastmcp run my_server.py --transport http --port 8000
+   uv run fastmcp run mcp_examples/server.py --transport http --port 8000
    ```
 
 2. (Optional) Use custom database location:
    ```bash
-   MCP_DB_PATH=/tmp/dev_keys.db uv run fastmcp run my_server.py --transport http --port 8000
+   MCP_DB_PATH=/tmp/dev_keys.db uv run fastmcp run mcp_examples/server.py --transport http --port 8000
    ```
 
 3. Test with the client:
    ```bash
-   uv run my_client.py --api-key YOUR_API_KEY --url http://localhost:8000/mcp
+   uv run -m mcp_examples.cli --api-key YOUR_API_KEY --url http://localhost:8000/mcp
    ```
 
 ### Production Deployment with ngrok
@@ -407,7 +406,7 @@ For exposing your local server to the internet (useful for development and demos
 
 2. Start the server:
    ```bash
-   uv run fastmcp run my_server.py --transport http --port 8000
+   uv run fastmcp run mcp_examples/server.py --transport http --port 8000
    ```
 
 3. Create ngrok tunnel:
@@ -417,7 +416,7 @@ For exposing your local server to the internet (useful for development and demos
 
 4. Use the ngrok URL with your client:
    ```bash
-   uv run my_client.py \
+   uv run -m mcp_examples.cli \
      --api-key YOUR_API_KEY \
      --url https://YOUR-NGROK-SUBDOMAIN.ngrok.app/mcp
    ```
@@ -437,7 +436,6 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # Copy project files
 COPY pyproject.toml uv.lock ./
 COPY mcp_examples/ mcp_examples/
-COPY my_server.py ./
 
 # Install dependencies
 RUN uv sync --frozen
@@ -446,7 +444,7 @@ RUN uv sync --frozen
 EXPOSE 8000
 
 # Run server
-CMD ["uv", "run", "fastmcp", "run", "my_server.py", "--transport", "http", "--port", "8000", "--host", "0.0.0.0"]
+CMD ["uv", "run", "fastmcp", "run", "mcp_examples/server.py", "--transport", "http", "--port", "8000", "--host", "0.0.0.0"]
 ```
 
 Build and run:
@@ -473,7 +471,7 @@ The server can be deployed to any cloud platform that supports Python applicatio
 
 1. Add a `Procfile`:
    ```
-   web: uv run fastmcp run my_server.py --transport http --port $PORT --host 0.0.0.0
+   web: uv run fastmcp run mcp_examples/server.py --transport http --port $PORT --host 0.0.0.0
    ```
 
 2. Set environment variables in your platform:
@@ -614,8 +612,6 @@ mcp-examples/
 │   ├── test_server.py        # MCPServer + integration tests
 │   ├── test_client.py        # MCPClient + edge case tests
 │   └── test_cli.py           # MCPClientApp + integration tests
-├── my_server.py              # Thin wrapper (backward compatibility)
-├── my_client.py              # Thin wrapper (backward compatibility)
 ├── auth.py                   # Standalone middleware example (reference)
 ├── api_keys.db               # SQLite database (generated on first run)
 ├── pyproject.toml            # Project dependencies (uv)

@@ -15,10 +15,10 @@ This project uses `uv` for Python package management with Python 3.12.
 uv sync
 
 # Run the MCP server
-uv run -m mcp_examples.server    # or: uv run my_server.py (wrapper)
+uv run -m mcp_examples.server
 
 # Run the MCP client
-uv run -m mcp_examples.cli      # or: uv run my_client.py (wrapper)
+uv run -m mcp_examples.cli
 
 # Run tests
 uv run pytest
@@ -34,7 +34,6 @@ The project is organized as a `mcp_examples` Python package:
 - **mcp_examples/client.py** — `MCPClient` class that connects to a remote MCP endpoint and calls tools.
 - **mcp_examples/cli.py** — `MCPClientApp` CLI application and `main()` entry point.
 - **mcp_examples/__init__.py** — Re-exports all public classes.
-- **my_server.py** / **my_client.py** — Thin wrappers for backward compatibility.
 - **auth.py** — Standalone snippet of the `ApiKeyMiddleware` class (no imports; reference/example code, not directly runnable).
 
 ## Key Dependencies

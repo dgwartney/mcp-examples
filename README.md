@@ -25,6 +25,163 @@ This project demonstrates how to build secure MCP servers and clients with:
 - **Multiple Transport Support**: Runs via stdio (default) or HTTP transport
 - **Automatic Database Initialization**: Creates schema and generates default API key on first run
 
+### Contact Server (`mcp_examples/contacts.py`)
+
+- **ContactDatabaseManager** (`contact_database.py`): SQLite-backed storage for mock Salesforce-style contact profiles, auto-seeded with 20 Warner Bros. cartoon character records
+- **ContactMCPServer** (`contacts.py`): Subclass of `AuthenticatedMCPServer` exposing contact search and authentication tools
+
+**Available Tools:**
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `search_by_last_name` | `last_name: str` | Case-insensitive partial match on last name |
+| `search_by_email` | `email: str` | Case-insensitive exact match on email |
+| `search_by_account_id` | `account_id: str` | Exact match on Salesforce-style account ID |
+| `authenticate` | `email: str, password: str` | Verify credentials; returns contact profile (without password) or raises `ToolError` |
+
+**Running the Contact Server:**
+
+```bash
+# stdio transport (default)
+uv run -m mcp_examples.contacts
+
+# HTTP transport
+uv run -m mcp_examples.contacts --transport streamable-http --port 8000
+```
+
+**Database:** Auto-seeded `contacts.db` with 20 Warner Bros. character contacts including fields like `Id`, `FirstName`, `LastName`, `Email`, `Phone`, `Title`, `Department`, `AccountId`, `AccountName`, and more.
+
+**Example `curl` Calls (Streamable HTTP transport):**
+
+Start the contact server with HTTP transport:
+
+```bash
+uv run -m mcp_examples.contacts --transport streamable-http --port 8000
+```
+
+The MCP Streamable HTTP transport requires session initialization before calling tools.
+Replace `YOUR_API_KEY` with the key printed on first server run.
+
+**Step 1 — Initialize the session** (capture the `Mcp-Session-Id` header):
+
+```bash
+curl -s -D /tmp/mcp_headers -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2025-03-26",
+      "capabilities": {},
+      "clientInfo": {"name": "curl-client", "version": "1.0"}
+    }
+  }'
+
+# Extract the session ID for subsequent requests
+SESSION_ID=$(grep -i 'mcp-session-id' /tmp/mcp_headers | awk '{print $2}' | tr -d '\r')
+```
+
+**Step 2 — Send the initialized notification:**
+
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{"jsonrpc": "2.0", "method": "notifications/initialized"}'
+```
+
+**Step 3 — Call tools** (all examples use the same session):
+
+Search by email:
+
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "search_by_email",
+      "arguments": {
+        "email": "bugs.bunny@acme.com"
+      }
+    }
+  }'
+```
+
+Search by last name:
+
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "search_by_last_name",
+      "arguments": {
+        "last_name": "Bunny"
+      }
+    }
+  }'
+```
+
+Search by account ID:
+
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "search_by_account_id",
+      "arguments": {
+        "account_id": "0011A00001xAC001"
+      }
+    }
+  }'
+```
+
+Authenticate a contact:
+
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "authenticate",
+      "arguments": {
+        "email": "bugs.bunny@acme.com",
+        "password": "bugs2022!"
+      }
+    }
+  }'
+```
+
 ### Client (`mcp_examples/client.py`)
 
 - **MCPClient** (`client.py`): Manages connections and tool invocation with authentication
@@ -602,14 +759,18 @@ mcp-examples/
 │   ├── __init__.py           # Re-exports all public classes
 │   ├── database.py           # DatabaseManager (SQLite API key storage)
 │   ├── middleware.py          # ApiKeyMiddleware (request authentication)
-│   ├── server.py             # MCPServer + module-level mcp instance
-│   ├── client.py             # MCPClient (remote tool invocation)
-│   └── cli.py                # MCPClientApp CLI + main() entry point
-├── tests/                    # Test suite
+│   ├── contact_database.py    # ContactDatabaseManager (mock contacts)
+│   ├── contacts.py            # ContactMCPServer + module-level mcp instance
+│   ├── server.py              # GreetMCPServer + module-level mcp instance
+│   ├── client.py              # MCPClient (remote tool invocation)
+│   └── cli.py                 # MCPClientApp CLI + main() entry point
+├── tests/                     # Test suite
 │   ├── __init__.py
-│   ├── test_database.py      # DatabaseManager tests
+│   ├── test_contact_database.py  # ContactDatabaseManager tests
+│   ├── test_contacts.py       # ContactMCPServer + integration tests
+│   ├── test_database.py       # DatabaseManager tests
 │   ├── test_middleware.py     # ApiKeyMiddleware tests
-│   ├── test_server.py        # MCPServer + integration tests
+│   ├── test_server.py        # GreetMCPServer + integration tests
 │   ├── test_client.py        # MCPClient + edge case tests
 │   └── test_cli.py           # MCPClientApp + integration tests
 ├── auth.py                   # Standalone middleware example (reference)

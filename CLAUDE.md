@@ -30,7 +30,8 @@ The project is organized as a `mcp_examples` Python package:
 
 - **mcp_examples/database.py** — `DatabaseManager` class for SQLite-backed API key storage and validation.
 - **mcp_examples/middleware.py** — `ApiKeyMiddleware` class that checks for an `X-API-Key` header on incoming HTTP requests.
-- **mcp_examples/server.py** — `MCPServer` class that wires up the database, middleware, and tools. Exposes module-level `server` and `mcp` instances.
+- **mcp_examples/base.py** — `AuthenticatedMCPServer` abstract base class with API key auth infrastructure (database, middleware). Subclass and implement `_register_tools()` to create new servers.
+- **mcp_examples/server.py** — `GreetMCPServer` derived class demonstrating tool registration. Exposes module-level `server` and `mcp` instances.
 - **mcp_examples/client.py** — `MCPClient` class that connects to a remote MCP endpoint and calls tools.
 - **mcp_examples/cli.py** — `MCPClientApp` CLI application and `main()` entry point.
 - **mcp_examples/__init__.py** — Re-exports all public classes.

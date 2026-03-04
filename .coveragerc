@@ -1,5 +1,5 @@
 [run]
-source = .
+source = mcp_examples
 omit =
     .venv/*
     */site-packages/*

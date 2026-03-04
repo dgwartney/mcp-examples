@@ -13,30 +13,29 @@ This project demonstrates how to build secure MCP servers and clients with:
 - **Case-insensitive Headers**: RFC 7230-compliant header handling
 - **Class-based Architecture**: Modular, testable, and maintainable code structure
 - **Cryptographic Key Generation**: Secure random API keys using Python's `secrets` module
-- **Comprehensive Testing**: 61 unit tests with >90% code coverage
+- **Comprehensive Testing**: 62 unit tests with >90% code coverage
 
 ## Features
 
-### Server (`my_server.py`)
+### Server (`mcp_examples/server.py`)
 
-- **DatabaseManager**: Handles SQLite operations for API key storage and validation
-- **ApiKeyMiddleware**: Validates incoming requests against stored API keys
-- **MCPServer**: Encapsulates server setup, tool registration, and lifecycle management
+- **DatabaseManager** (`database.py`): Handles SQLite operations for API key storage and validation
+- **ApiKeyMiddleware** (`middleware.py`): Validates incoming requests against stored API keys
+- **MCPServer** (`server.py`): Encapsulates server setup, tool registration, and lifecycle management
 - **Multiple Transport Support**: Runs via stdio (default) or HTTP transport
 - **Automatic Database Initialization**: Creates schema and generates default API key on first run
 
-### Client (`my_client.py`)
+### Client (`mcp_examples/client.py`)
 
-- **MCPClient**: Manages connections and tool invocation with authentication
-- **MCPClientApp**: CLI application with argument parsing
+- **MCPClient** (`client.py`): Manages connections and tool invocation with authentication
+- **MCPClientApp** (`cli.py`): CLI application with argument parsing
 - **StreamableHttpTransport**: Properly passes API keys via HTTP headers
 - **Error Handling**: Graceful error reporting for connection and authentication failures
 
-### Testing (`test_*.py`)
+### Testing (`tests/`)
 
-- **61 Unit Tests**: Comprehensive test coverage for all components
-- **96.49% Server Coverage**: Database, middleware, and server classes fully tested
-- **100% Client Coverage**: Client and CLI application completely tested
+- **62 Unit Tests**: Comprehensive test coverage for all components
+- **96% Coverage**: Database, middleware, server, client, and CLI classes fully tested
 - **Async Test Support**: Proper testing of async/await patterns
 - **Integration Tests**: End-to-end workflow validation
 - **CI/CD Ready**: XML and HTML coverage reports for continuous integration
@@ -161,7 +160,7 @@ uv sync --extra test
 #### Option 1: Direct Python Execution (stdio transport)
 
 ```bash
-uv run my_server.py
+uv run -m mcp_examples.server    # or: uv run my_server.py (wrapper)
 ```
 
 On first run, the server will generate a default API key and print it to stdout:
@@ -207,20 +206,21 @@ The client requires an API key for authentication. Use the key printed by the se
 #### Basic Usage
 
 ```bash
-uv run my_client.py --api-key YOUR_API_KEY_HERE
+uv run -m mcp_examples.cli --api-key YOUR_API_KEY_HERE
+# or: uv run my_client.py --api-key YOUR_API_KEY_HERE
 ```
 
 #### Custom Parameters
 
 ```bash
 # Custom name
-uv run my_client.py --api-key YOUR_API_KEY --name Alice
+uv run -m mcp_examples.cli --api-key YOUR_API_KEY --name Alice
 
 # Custom server URL
-uv run my_client.py --api-key YOUR_API_KEY --url http://localhost:8000/mcp
+uv run -m mcp_examples.cli --api-key YOUR_API_KEY --url http://localhost:8000/mcp
 
 # All parameters
-uv run my_client.py \
+uv run -m mcp_examples.cli \
   --api-key YOUR_API_KEY \
   --name Bob \
   --url http://localhost:8000/mcp
@@ -229,7 +229,7 @@ uv run my_client.py \
 #### Example Output
 
 ```bash
-$ uv run my_client.py --api-key QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80 --name Alice
+$ uv run -m mcp_examples.cli --api-key QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80 --name Alice
 Hello, Alice!
 ```
 
@@ -241,9 +241,7 @@ The project includes comprehensive unit tests with >90% code coverage for all pr
 
 | Component | Tests | Coverage | Details |
 |-----------|-------|----------|---------|
-| **my_server.py** | 31 | 96.49% | Database, middleware, server classes |
-| **my_client.py** | 30 | 100% | Client and CLI application |
-| **Total** | 61 | 98.90% | All production code covered |
+| **mcp_examples** | 62 | 96.15% | All package modules |
 
 **Test Categories**:
 - **Unit Tests**: Individual class and method testing with mocks
@@ -260,7 +258,7 @@ uv sync --extra test
 **Test Dependencies**:
 - `pytest>=8.0.0` - Test framework
 - `pytest-asyncio>=0.23.0` - Async test support
-- `pytest-cov>=7.0.0` - Coverage reporting
+- `pytest-cov>=4.1.0` - Coverage reporting
 - `pytest-mock>=3.12.0` - Mocking utilities
 
 #### Run All Tests
@@ -272,31 +270,27 @@ uv run pytest
 #### Run Tests with Coverage Report
 
 ```bash
-# Terminal report with missing lines
-uv run pytest --cov=my_server --cov=my_client --cov-report=term-missing
+# Terminal report with missing lines (configured via pytest.ini)
+uv run pytest
 
 # HTML coverage report (opens in browser)
-uv run pytest --cov=my_server --cov=my_client --cov-report=html
 open htmlcov/index.html
-
-# XML coverage report (for CI/CD)
-uv run pytest --cov=my_server --cov=my_client --cov-report=xml
 ```
 
 #### Run Specific Test Files
 
 ```bash
-# Test server only
-uv run pytest test_my_server.py
+# Test database module
+uv run pytest tests/test_database.py
 
-# Test client only
-uv run pytest test_my_client.py
+# Test client module
+uv run pytest tests/test_client.py
 
 # Run specific test class
-uv run pytest test_my_server.py::TestDatabaseManager
+uv run pytest tests/test_database.py::TestDatabaseManager
 
 # Run specific test method
-uv run pytest test_my_server.py::TestDatabaseManager::test_init_db_creates_table
+uv run pytest tests/test_database.py::TestDatabaseManager::test_init_db_creates_table
 
 # Run with verbose output
 uv run pytest -v
@@ -307,39 +301,51 @@ uv run pytest -x
 
 #### Test Suite Details
 
-**Server Tests (`test_my_server.py`)**:
+**Database Tests (`tests/test_database.py`)**:
 - `TestDatabaseManager` (9 tests): Database initialization, schema, key validation
+
+**Middleware Tests (`tests/test_middleware.py`)**:
 - `TestApiKeyMiddleware` (7 tests): Authentication, case-insensitive headers, error handling
+
+**Server Tests (`tests/test_server.py`)**:
 - `TestMCPServer` (10 tests): Server initialization, middleware/tool registration
 - `TestIntegration` (3 tests): End-to-end authentication workflows
 
-**Client Tests (`test_my_client.py`)**:
+**Client Tests (`tests/test_client.py`)**:
 - `TestMCPClient` (9 tests): Client initialization, tool calls, error handling
-- `TestMCPClientApp` (13 tests): CLI parsing, argument validation, execution
-- `TestIntegration` (3 tests): End-to-end client workflows
 - `TestEdgeCases` (4 tests): Special characters, unusual inputs, edge cases
+
+**CLI Tests (`tests/test_cli.py`)**:
+- `TestMCPClientApp` (14 tests): CLI parsing, argument validation, execution
+- `TestIntegration` (2 tests): End-to-end client workflows
 
 #### Example Test Output
 
 ```bash
-$ uv run pytest --cov=my_server --cov=my_client --cov-report=term-missing
+$ uv run pytest
 
 ============================= test session starts ==============================
 platform darwin -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
-collected 61 items
+collected 62 items
 
-test_my_client.py ..............................                         [ 49%]
-test_my_server.py ...............................                        [100%]
+tests/test_cli.py ................                                       [ 25%]
+tests/test_client.py ..............                                      [ 48%]
+tests/test_database.py .........                                         [ 62%]
+tests/test_middleware.py .......                                          [ 74%]
+tests/test_server.py ................                                     [100%]
 
----------- coverage: platform darwin, python 3.12.12 -----------
-Name           Stmts   Miss   Cover   Missing
----------------------------------------------
-my_client.py      34      0 100.00%
-my_server.py      57      2  96.49%   214, 223
----------------------------------------------
-TOTAL             91      2  97.80%
+Name                         Stmts   Miss   Cover   Missing
+-----------------------------------------------------------
+mcp_examples/__init__.py         5      0 100.00%
+mcp_examples/cli.py             22      2  90.91%   88-89
+mcp_examples/client.py          16      0 100.00%
+mcp_examples/database.py        25      0 100.00%
+mcp_examples/middleware.py      14      0 100.00%
+mcp_examples/server.py          22      2  90.91%   93, 102
+-----------------------------------------------------------
+TOTAL                          104      4  96.15%
 
-============================== 61 passed in 4.06s ===============================
+======================== 62 passed in 6.96s ================================
 ```
 
 ### Managing API Keys
@@ -430,6 +436,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Copy project files
 COPY pyproject.toml uv.lock ./
+COPY mcp_examples/ mcp_examples/
 COPY my_server.py ./
 
 # Install dependencies
@@ -503,7 +510,7 @@ For serverless deployment, you'll need to adapt the server to use the platform's
 
 ### Adding New Tools
 
-Edit `my_server.py` and add tools in the `_register_tools` method:
+Edit `mcp_examples/server.py` and add tools in the `_register_tools` method:
 
 ```python
 def _register_tools(self) -> None:
@@ -557,7 +564,7 @@ def get_settings() -> str:
 
 **Cause**: Headers not passed correctly to the transport layer.
 
-**Solution**: Ensure you're using `StreamableHttpTransport` with headers parameter (already implemented in `my_client.py`).
+**Solution**: Ensure you're using `StreamableHttpTransport` with headers parameter (already implemented in `mcp_examples/client.py`).
 
 ### Client: "Error: Unauthorized: Invalid or missing API Key"
 
@@ -574,7 +581,7 @@ def get_settings() -> str:
 
 **Cause**: FastMCP CLI expects a module-level `mcp` variable.
 
-**Solution**: Already fixed in `my_server.py` with:
+**Solution**: Already handled in `mcp_examples/server.py` with:
 ```python
 server = MCPServer()
 mcp = server.mcp
@@ -593,10 +600,22 @@ mcp = server.mcp
 
 ```
 mcp-examples/
-├── my_server.py              # MCP server with authentication
-├── my_client.py              # MCP client CLI application
-├── test_my_server.py         # Server unit tests (>95% coverage)
-├── test_my_client.py         # Client unit tests (>95% coverage)
+├── mcp_examples/             # Main Python package
+│   ├── __init__.py           # Re-exports all public classes
+│   ├── database.py           # DatabaseManager (SQLite API key storage)
+│   ├── middleware.py          # ApiKeyMiddleware (request authentication)
+│   ├── server.py             # MCPServer + module-level mcp instance
+│   ├── client.py             # MCPClient (remote tool invocation)
+│   └── cli.py                # MCPClientApp CLI + main() entry point
+├── tests/                    # Test suite
+│   ├── __init__.py
+│   ├── test_database.py      # DatabaseManager tests
+│   ├── test_middleware.py     # ApiKeyMiddleware tests
+│   ├── test_server.py        # MCPServer + integration tests
+│   ├── test_client.py        # MCPClient + edge case tests
+│   └── test_cli.py           # MCPClientApp + integration tests
+├── my_server.py              # Thin wrapper (backward compatibility)
+├── my_client.py              # Thin wrapper (backward compatibility)
 ├── auth.py                   # Standalone middleware example (reference)
 ├── api_keys.db               # SQLite database (generated on first run)
 ├── pyproject.toml            # Project dependencies (uv)

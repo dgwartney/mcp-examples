@@ -11,6 +11,9 @@ dependencies = [
     "fastmcp>=2.14.5",
 ]
 
+[project.scripts]
+mcp-client = "mcp_examples.cli:main"
+
 [project.optional-dependencies]
 test = [
     "pytest>=8.0.0",

@@ -14,17 +14,27 @@ This project uses `uv` for Python package management with Python 3.12.
 # Install dependencies
 uv sync
 
-# Run the MCP server (starts with default stdio transport)
-uv run my_server.py
+# Run the MCP server
+uv run -m mcp_examples.server    # or: uv run my_server.py (wrapper)
 
 # Run the MCP client
-uv run my_client.py
+uv run -m mcp_examples.cli      # or: uv run my_client.py (wrapper)
+
+# Run tests
+uv run pytest
 ```
 
 ## Architecture
 
-- **my_server.py** — FastMCP server that registers tools (e.g., `greet`) and applies API key authentication via middleware. The `ApiKeyMiddleware` checks for an `X-API-Key` header on incoming HTTP requests.
-- **my_client.py** — FastMCP client that connects to a remote MCP endpoint and calls tools.
+The project is organized as a `mcp_examples` Python package:
+
+- **mcp_examples/database.py** — `DatabaseManager` class for SQLite-backed API key storage and validation.
+- **mcp_examples/middleware.py** — `ApiKeyMiddleware` class that checks for an `X-API-Key` header on incoming HTTP requests.
+- **mcp_examples/server.py** — `MCPServer` class that wires up the database, middleware, and tools. Exposes module-level `server` and `mcp` instances.
+- **mcp_examples/client.py** — `MCPClient` class that connects to a remote MCP endpoint and calls tools.
+- **mcp_examples/cli.py** — `MCPClientApp` CLI application and `main()` entry point.
+- **mcp_examples/__init__.py** — Re-exports all public classes.
+- **my_server.py** / **my_client.py** — Thin wrappers for backward compatibility.
 - **auth.py** — Standalone snippet of the `ApiKeyMiddleware` class (no imports; reference/example code, not directly runnable).
 
 ## Key Dependencies

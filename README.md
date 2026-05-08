@@ -44,17 +44,11 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 **Windows** (PowerShell):
 ```powershell
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+irm https://astral.sh/uv/install.ps1 | iex
 ```
 
 After installation, close and reopen your terminal, then confirm:
-
-**macOS:**
 ```bash
-uv --version
-```
-**Windows:**
-```powershell
 uv --version
 ```
 
@@ -95,147 +89,143 @@ This project demonstrates how to build secure MCP servers and clients with:
 | `search_by_account_id` | `account_id: str` | Exact match on Salesforce-style account ID |
 | `authenticate` | `email: str, password: str` | Verify credentials; returns contact profile (without password) or raises `ToolError` |
 
-**Running the Contact Server:**
-
-```bash
-# stdio transport (default)
-uv run -m mcp_examples.contacts
-
-# HTTP transport
-uv run -m mcp_examples.contacts --transport streamable-http --port 8000
-```
-
 **Database:** Auto-seeded `contacts.db` with 20 Warner Bros. character contacts including fields like `Id`, `FirstName`, `LastName`, `Email`, `Phone`, `Title`, `Department`, `AccountId`, `AccountName`, and more.
 
-**Example `curl` Calls (Streamable HTTP transport):**
+#### Example Agent Prompt: Email Lookup and Authentication
 
-Start the contact server with HTTP transport:
+The following prompt instructs an AI agent to guide a user through looking up their account by email and authenticating with a password. Paste this as the system prompt when connecting an AI agent to the Contact MCP server.
 
-```bash
-uv run -m mcp_examples.contacts --transport streamable-http --port 8000
 ```
+## Identity
 
-The MCP Streamable HTTP transport requires session initialization before calling tools.
-Replace `YOUR_API_KEY` with the key printed on first server run.
+You are Contactify, a customer account assistant. Your only job in this conversation is to identify and authenticate a customer using their email address and password. You do this by calling MCP tools. You never look up information from memory. You never make assumptions about who the user is.
 
-**Step 1 — Initialize the session** (capture the `Mcp-Session-Id` header):
+---
 
-```bash
-curl -s -D /tmp/mcp_headers -X POST http://localhost:8000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "initialize",
-    "params": {
-      "protocolVersion": "2025-03-26",
-      "capabilities": {},
-      "clientInfo": {"name": "curl-client", "version": "1.0"}
-    }
-  }'
+## Tools
 
-# Extract the session ID for subsequent requests
-SESSION_ID=$(grep -i 'mcp-session-id' /tmp/mcp_headers | awk '{print $2}' | tr -d '\r')
-```
+You have exactly two tools available. Use them exactly as described.
 
-**Step 2 — Send the initialized notification:**
+### Tool 1: search_by_email
 
-```bash
-curl -s -X POST http://localhost:8000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -H "Mcp-Session-Id: $SESSION_ID" \
-  -d '{"jsonrpc": "2.0", "method": "notifications/initialized"}'
-```
+**When to call:** Immediately and automatically the moment the user provides an email address. Do not wait. Do not confirm with the user first. Do not narrate that you are about to call it. Just call it.
 
-**Step 3 — Call tools** (all examples use the same session):
+**Signature:**
+search_by_email(email: str) -> list[dict]
 
-Search by email:
+**Parameters:**
+- email: the exact string the user provided. Do not trim, correct, lowercase, or modify it in any way.
 
-```bash
-curl -s -X POST http://localhost:8000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -H "Mcp-Session-Id: $SESSION_ID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 2,
-    "method": "tools/call",
-    "params": {
-      "name": "search_by_email",
-      "arguments": {
-        "email": "bugs.bunny@acme.com"
-      }
-    }
-  }'
-```
+**Return value:**
+- A list of contact records. Each record is a dictionary containing fields such as FirstName, LastName, Email, AccountName, Phone, Title, Department, and others.
+- An empty list [] means no account was found for that email.
 
-Search by last name:
+**IMPORTANT:** The contact record may contain a Password field. You must NEVER read, repeat, display, reference, or use the Password field from this result for any purpose. Treat it as if it does not exist.
 
-```bash
-curl -s -X POST http://localhost:8000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -H "Mcp-Session-Id: $SESSION_ID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 3,
-    "method": "tools/call",
-    "params": {
-      "name": "search_by_last_name",
-      "arguments": {
-        "last_name": "Bunny"
-      }
-    }
-  }'
-```
+---
 
-Search by account ID:
+### Tool 2: authenticate
 
-```bash
-curl -s -X POST http://localhost:8000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -H "Mcp-Session-Id: $SESSION_ID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 4,
-    "method": "tools/call",
-    "params": {
-      "name": "search_by_account_id",
-      "arguments": {
-        "account_id": "0011A00001xAC001"
-      }
-    }
-  }'
-```
+**When to call:** Immediately and automatically the moment the user provides a password. Do not wait. Do not confirm with the user first. Do not narrate that you are about to call it. Just call it.
 
-Authenticate a contact:
+**Signature:**
+authenticate(email: str, password: str) -> dict
 
-```bash
-curl -s -X POST http://localhost:8000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -H "Mcp-Session-Id: $SESSION_ID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 5,
-    "method": "tools/call",
-    "params": {
-      "name": "authenticate",
-      "arguments": {
-        "email": "bugs.bunny@acme.com",
-        "password": "bugs2022!"
-      }
-    }
-  }'
+**Parameters:**
+- email: the exact email address the user provided earlier in this conversation.
+- password: the exact string the user just provided. Do not trim, modify, or transform it.
+
+**Return value:**
+- On success: a contact record dictionary (without the Password field). This confirms the user is authenticated.
+- On failure: the tool raises a ToolError with the message "Authentication failed: invalid email or password". This means the credentials were wrong.
+
+---
+
+## Conversation States
+
+You operate in exactly four states. Follow the instructions for each state precisely.
+
+---
+
+### STATE 1: Collect email
+
+**Entry action:** Greet the user and ask for the email address associated with their account.
+
+Example: "Welcome to Contactify. Please provide the email address associated with your account."
+
+**Wait** for the user to reply.
+
+When the user provides any text that looks like an email address, immediately transition to STATE 2.
+
+If the user provides something that is clearly not an email address (e.g. a question, a name, unrelated text), politely ask again for their email address.
+
+---
+
+### STATE 2: Look up the account
+
+**Entry action:** Call search_by_email(email) immediately using the email the user provided. Do not say anything before calling the tool.
+
+**After the tool returns:**
+
+**If the result is an empty list:**
+Reply: "I was unable to find an account associated with [email]. Please check the address and try again."
+Return to STATE 1 and ask for the email again.
+
+**If the result contains one or more records:**
+Use the first record. Extract FirstName, LastName, and AccountName.
+Reply: "I found an account for [FirstName] [LastName] at [AccountName]. Please enter your password to continue."
+Store the email and the contact record in context. Transition to STATE 3.
+
+Do not show any other fields from the contact record at this stage. Do not reveal the Password field under any circumstances.
+
+---
+
+### STATE 3: Collect password and authenticate
+
+**Entry action:** Wait for the user to provide a password.
+
+If the user provides any non-empty text as their password, immediately call authenticate(email, password) using the stored email and the text they just entered. Do not say anything before calling the tool.
+
+**After authenticate returns:**
+
+**If authentication succeeds (tool returns a contact dict):**
+Reply: "Authentication successful. Welcome, [FirstName] [LastName]!"
+Then display a friendly summary of the authenticated user's account using the returned contact dict. Include: full name, email, title, department, account name, and phone number. Do not display any password field.
+Transition to STATE 4.
+
+**If authentication fails (tool raises a ToolError):**
+Increment a failure counter (starting at 0).
+- After failure 1: Reply "Incorrect password. You have 2 attempts remaining. Please try again."
+- After failure 2: Reply "Incorrect password. You have 1 attempt remaining. Please try again."
+- After failure 3: Reply "Too many failed attempts. For security reasons your session has been locked. Please contact support for assistance."
+  Transition to STATE 5. Do not accept any further input.
+
+After failures 1 or 2, remain in STATE 3 and wait for the user to provide another password.
+
+---
+
+### STATE 4: Authenticated
+
+The user is authenticated. You may now answer questions about the account information returned by the authenticate tool. Do not call any further tools unless explicitly instructed to do so for a new task.
+
+---
+
+### STATE 5: Locked
+
+The session is locked due to too many failed authentication attempts. Do not call any tools. Do not accept any further credentials. Repeat only: "Your session is locked. Please contact support for assistance."
+
+---
+
+## Absolute Rules
+
+1. Always call search_by_email before asking for a password. Never skip the lookup step.
+2. Always call authenticate before confirming a user's identity. Never assume a user is authenticated without a successful tool call.
+3. Never ask for the email and password in the same message.
+4. Never reveal, echo, or repeat a password the user has provided.
+5. Never reveal the Password field from any tool result.
+6. Never modify the email or password strings before passing them to tools.
+7. Never tell the user whether their email exists in the system before you have already told them in STATE 2 — do not confirm or deny email existence in failure messages after authentication (say "invalid email or password", not "incorrect password for that email").
+8. Never skip a tool call by reasoning from memory or prior context. Always call the tool.
 ```
 
 ### Client (`mcp_examples/client.py`)
@@ -306,37 +296,6 @@ curl -s -X POST http://localhost:8000/mcp \
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Requirements
-
-- Python 3.12+
-- `uv` package manager (handles all dependencies and virtual environments)
-- FastMCP 2.14.5+ (installed via uv)
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Description | Default | Example |
-|----------|-------------|---------|---------|
-| `MCP_DB_PATH` | Path to SQLite database file | `api_keys.db` in project directory | `/var/data/keys.db` |
-
-**macOS:**
-```bash
-# Set for a single command
-MCP_DB_PATH=/tmp/keys.db uv run -m mcp_examples.server
-
-# Or export for the current terminal session
-export MCP_DB_PATH=/var/data/api_keys.db
-uv run -m mcp_examples.server
-```
-
-**Windows (PowerShell):**
-```powershell
-# Set for the current terminal session
-$env:MCP_DB_PATH = "C:\data\api_keys.db"
-uv run -m mcp_examples.server
-```
-
 ## Installation
 
 ### Clone and Setup
@@ -361,6 +320,31 @@ uv sync
 To also install test dependencies:
 ```bash
 uv sync --extra test
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|---------|
+| `MCP_DB_PATH` | Path to SQLite database file | `api_keys.db` in project directory | `/var/data/keys.db` |
+
+**macOS:**
+```bash
+# Set for a single command
+MCP_DB_PATH=/tmp/keys.db uv run -m mcp_examples.server
+
+# Or export for the current terminal session
+export MCP_DB_PATH=/var/data/api_keys.db
+uv run -m mcp_examples.server
+```
+
+**Windows (PowerShell):**
+```powershell
+# Set for the current terminal session
+$env:MCP_DB_PATH = "C:\data\api_keys.db"
+uv run -m mcp_examples.server
 ```
 
 ## Usage
@@ -456,8 +440,14 @@ uv run -m mcp_examples.server
 
 #### Option 2: HTTP Transport (for remote clients)
 
+**Greet server:**
 ```bash
-uv run fastmcp run mcp_examples/server.py --transport streamable-http --port 8000
+uv run -m mcp_examples.server --transport streamable-http --port 8000
+```
+
+**Contact server:**
+```bash
+uv run -m mcp_examples.contacts --transport streamable-http --port 8000
 ```
 
 #### Option 3: Using FastMCP CLI Development Server
@@ -543,6 +533,133 @@ uv run -m mcp_examples.cli `
 ```bash
 $ uv run -m mcp_examples.cli --api-key QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80 --name Alice
 Hello, Alice!
+```
+
+### Calling Tools with curl
+
+`curl` is available on macOS and Windows 10/11 (PowerShell and Command Prompt). The examples below use macOS syntax for multi-line commands — replace `\` with a backtick `` ` `` on Windows PowerShell.
+
+The Streamable HTTP transport requires a three-step sequence: initialize the session, confirm it, then call tools. All requests must include your `X-API-Key` header.
+
+> The `/tmp/mcp_headers` path in Step 1 is macOS-only. On Windows, replace it with a local path such as `C:\tmp\mcp_headers.txt` and adjust the `grep` line accordingly, or use a tool like [Postman](https://www.postman.com/) to manage sessions interactively.
+
+#### Greet Server (`mcp_examples/server.py`)
+
+Start the server first:
+```bash
+uv run -m mcp_examples.server --transport streamable-http --port 8000
+```
+
+**Step 1 — Initialize the session:**
+```bash
+curl -s -D /tmp/mcp_headers -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl-client","version":"1.0"}}}'
+
+SESSION_ID=$(grep -i 'mcp-session-id' /tmp/mcp_headers | awk '{print $2}' | tr -d '\r')
+```
+
+**Step 2 — Confirm the session:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+```
+
+**Step 3 — Call the greet tool:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"greet","arguments":{"name":"Alice"}}}'
+```
+
+#### Contact Server (`mcp_examples/contacts.py`)
+
+Start the server first:
+```bash
+uv run -m mcp_examples.contacts --transport streamable-http --port 8000
+```
+
+Run Steps 1 and 2 above (same commands, different server). Then call any contact tool:
+
+**Search by email:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "search_by_email",
+      "arguments": {"email": "bugs.bunny@acme.com"}
+    }
+  }'
+```
+
+**Search by last name:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "search_by_last_name",
+      "arguments": {"last_name": "Bunny"}
+    }
+  }'
+```
+
+**Search by account ID:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "search_by_account_id",
+      "arguments": {"account_id": "0011A00001xAC001"}
+    }
+  }'
+```
+
+**Authenticate a contact:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "authenticate",
+      "arguments": {"email": "bugs.bunny@acme.com", "password": "bugs2022!"}
+    }
+  }'
 ```
 
 ### Running Tests
@@ -882,7 +999,7 @@ RUN uv sync --frozen
 EXPOSE 8000
 
 # Run server
-CMD ["uv", "run", "fastmcp", "run", "mcp_examples/server.py", "--transport", "http", "--port", "8000", "--host", "0.0.0.0"]
+CMD ["uv", "run", "-m", "mcp_examples.server", "--transport", "streamable-http", "--port", "8000", "--host", "0.0.0.0"]
 ```
 
 Build and run:
@@ -909,7 +1026,7 @@ The server can be deployed to any cloud platform that supports Python applicatio
 
 1. Add a `Procfile`:
    ```
-   web: uv run fastmcp run mcp_examples/server.py --transport http --port $PORT --host 0.0.0.0
+   web: uv run -m mcp_examples.server --transport streamable-http --port $PORT --host 0.0.0.0
    ```
 
 2. Set environment variables in your platform:
@@ -1148,14 +1265,16 @@ mcp = server.mcp
 **Cause**: Server not running or wrong URL/port.
 
 **Solution**:
-1. Verify server is running: `lsof -i :8000` (on Unix)
+1. Verify the server is running and listening on port 8000:
+   - **macOS**: `lsof -i :8000`
+   - **Windows (PowerShell)**: `netstat -ano | findstr :8000`
 2. Check the URL matches the server's address
-3. Ensure firewall allows the connection
+3. Ensure your firewall allows the connection
 
 ## Project Structure
 
 ```
-mcp-examples/
+mcp-example/
 ├── mcp_examples/             # Main Python package
 │   ├── __init__.py           # Re-exports all public classes
 │   ├── database.py           # DatabaseManager (SQLite API key storage)

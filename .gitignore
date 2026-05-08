@@ -17,3 +17,5 @@ wheels/
 coverage.xml
 htmlcov/
 .pytest_cache/
+
+.idea

@@ -16,6 +16,7 @@ Example:
         $ uv run -m mcp_examples.contacts --transport streamable-http --port 8000
 """
 
+import os
 from typing import Optional
 
 from fastmcp.exceptions import ToolError
@@ -35,7 +36,7 @@ class ContactMCPServer(AuthenticatedMCPServer):
     def __init__(
         self,
         db_path: Optional[str] = None,
-        contact_db_path: str = "contacts.db",
+        contact_db_path: Optional[str] = None,
     ):
         """
         Initialize the contact MCP server.
@@ -44,7 +45,14 @@ class ContactMCPServer(AuthenticatedMCPServer):
             db_path: Path to the API key database. Passed to
                 ``AuthenticatedMCPServer``.
             contact_db_path: Path to the contacts SQLite database.
+                If None, checks CONTACTS_DB_PATH environment variable.
+                Defaults to contacts.db in the current working directory.
         """
+        if contact_db_path is None:
+            contact_db_path = os.environ.get(
+                "CONTACTS_DB_PATH",
+                os.path.join(os.getcwd(), "contacts.db")
+            )
         self.contact_db = ContactDatabaseManager(contact_db_path)
         self.contact_db.init_db()
         super().__init__(name="ContactMCP", db_path=db_path)

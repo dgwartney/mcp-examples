@@ -52,7 +52,7 @@ uv run fastmcp dev mcp_examples/server.py
 | [docs/running.md](docs/running.md) | All ways to run: stdio, HTTP transport, FastMCP CLI |
 | [docs/clients.md](docs/clients.md) | Built-in mcp-client and curl examples for both servers |
 | [docs/managing-contacts.md](docs/managing-contacts.md) | View, add, update, and delete contacts in the SQLite database |
-| [docs/deployment.md](docs/deployment.md) | ngrok, Render, Fly.io, Railway, Docker, VPS — full getting-started guides |
+| [docs/deployment/index.md](docs/deployment/index.md) | Provider comparison table and links to individual deployment guides |
 | [docs/testing.md](docs/testing.md) | Running the test suite and coverage reports |
 | [docs/security.md](docs/security.md) | API key management, database security, header handling |
 | [docs/extending.md](docs/extending.md) | Adding tools, custom auth, serving multiple servers |
@@ -71,7 +71,7 @@ uv run fastmcp dev mcp_examples/server.py
 | Railway | $5 credit/mo | ❌ | ✅ |
 | Docker + VPS | ~$4/mo | ✅ | ✅ |
 
-See [docs/deployment.md](docs/deployment.md) for step-by-step guides for each platform.
+See [docs/deployment/index.md](docs/deployment/index.md) for step-by-step guides for each platform.
 
 ---
 

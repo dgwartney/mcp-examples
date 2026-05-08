@@ -4,6 +4,64 @@ A production-ready implementation of Model Context Protocol (MCP) server and cli
 
 **Author:** David Gwartney (david.gwartney@gmail.com)
 
+---
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+  - [1. Open a terminal](#1-open-a-terminal)
+  - [2. Install Git](#2-install-git)
+  - [3. Install uv](#3-install-uv)
+- [Overview](#overview)
+- [Features](#features)
+  - [Server](#server-mcp_examplesserverpy)
+  - [Contact Server](#contact-server-mcp_examplescontactspy)
+  - [Client](#client-mcp_examplesclientpy)
+  - [Testing](#testing-tests)
+- [Architecture](#architecture)
+- [Installation](#installation)
+  - [Clone and Setup](#clone-and-setup)
+- [Configuration](#configuration)
+  - [Environment Variables](#environment-variables)
+- [Usage](#usage)
+  - [Authentication Setup](#authentication-setup)
+  - [Running the Server](#running-the-server)
+  - [Using the FastMCP CLI](#using-the-fastmcp-cli)
+  - [Running the Built-in Client](#running-the-built-in-client-mcp-client)
+  - [Calling Tools with curl](#calling-tools-with-curl)
+  - [Running Tests](#running-tests)
+  - [Managing API Keys](#managing-api-keys)
+  - [Managing Contacts](#managing-contacts)
+- [Deployment](#deployment)
+  - [Local Development](#local-development)
+  - [Production Deployment with ngrok](#production-deployment-with-ngrok)
+  - [Render (Free Tier)](#render-free-tier)
+  - [Fly.io (Free Tier)](#flyio-free-tier)
+  - [Railway](#railway)
+  - [Docker / VPS Deployment](#docker-vps-deployment)
+- [Security Considerations](#security-considerations)
+  - [API Key Management](#api-key-management)
+  - [Database Security](#database-security)
+  - [Header Handling](#header-handling)
+- [Extending the Project](#extending-the-project)
+  - [Adding New Tools](#adding-new-tools)
+  - [Custom Authentication](#custom-authentication)
+  - [Serving Multiple Servers on One Port](#serving-multiple-servers-on-one-port)
+  - [Adding Resources](#adding-resources)
+- [Troubleshooting](#troubleshooting)
+  - [Error: Invalid request parameters](#client-error-invalid-request-parameters)
+  - [Error: Unauthorized: Invalid or missing API Key](#client-error-unauthorized-invalid-or-missing-api-key)
+  - [Server object 'mcp' not found](#server-server-object-mcp-not-found)
+  - [Connection Refused](#connection-refused)
+- [Project Structure](#project-structure)
+- [Contributing](#contributing)
+- [License](#license)
+- [Platform Integrations](#platform-integrations)
+- [Resources](#resources)
+- [Support](#support)
+
+---
+
 ## Prerequisites
 
 Before you can run this project you need a terminal, Git, and `uv`. You do **not** need to install Python separately — `uv` will download and manage the correct Python version for you.
@@ -328,7 +386,8 @@ uv sync --extra test
 
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
-| `MCP_DB_PATH` | Path to SQLite database file | `api_keys.db` in project directory | `/var/data/keys.db` |
+| `MCP_DB_PATH` | Path to the API key SQLite database | `api_keys.db` in working directory | `/data/api_keys.db` |
+| `CONTACTS_DB_PATH` | Path to the contacts SQLite database | `contacts.db` in working directory | `/data/contacts.db` |
 
 **macOS:**
 ```bash
@@ -976,67 +1035,450 @@ For exposing your local server to the internet (useful for development and demos
 
    Or connect any MCP-compatible client to `https://YOUR-NGROK-SUBDOMAIN.ngrok.app/mcp` with the `X-API-Key` header set to your API key.
 
-### Docker Deployment
+### Render (Free Tier)
 
-Create a `Dockerfile`:
+[Render](https://render.com) offers a free web service tier with a $1/month persistent disk, which keeps `api_keys.db` and `contacts.db` intact across deploys and restarts.
 
-```dockerfile
-FROM python:3.12-slim
+**Official guides:**
+- [Render Python getting started](https://render.com/docs/deploy-python)
+- [Render persistent disks](https://render.com/docs/disks)
+- [Render environment variables](https://render.com/docs/configure-environment-variables)
+- [Render free tier limits](https://render.com/docs/free#free-web-services)
 
-WORKDIR /app
+> **What you need:** A [GitHub](https://github.com) account with this repo pushed to it, and a free [Render](https://render.com) account.
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+#### Step 1 — Push the repo to GitHub
 
-# Copy project files
-COPY pyproject.toml uv.lock ./
-COPY mcp_examples/ mcp_examples/
-
-# Install dependencies
-RUN uv sync --frozen
-
-# Expose port
-EXPOSE 8000
-
-# Run server
-CMD ["uv", "run", "-m", "mcp_examples.server", "--transport", "streamable-http", "--port", "8000", "--host", "0.0.0.0"]
-```
-
-Build and run:
+If you haven't already, create a repository on GitHub and push your local copy:
 
 ```bash
-# Build image
+git remote add origin https://github.com/YOUR_USERNAME/mcp-example.git
+git push -u origin main
+```
+
+#### Step 2 — Create a Render Web Service
+
+1. Log in to [render.com](https://render.com) and click **New > Web Service**
+2. Connect your GitHub account and select your `mcp-example` repository
+3. Configure the service:
+
+   | Setting | Value |
+   |---------|-------|
+   | **Runtime** | Python 3 |
+   | **Build Command** | `pip install uv && uv sync --frozen` |
+   | **Start Command** | `uv run -m mcp_examples.server --transport streamable-http --port $PORT --host 0.0.0.0` |
+   | **Instance Type** | Free |
+
+4. Click **Advanced** and add these environment variables:
+
+   | Key | Value |
+   |-----|-------|
+   | `MCP_DB_PATH` | `/data/api_keys.db` |
+   | `CONTACTS_DB_PATH` | `/data/contacts.db` |
+
+5. Click **Create Web Service**. Render will build and deploy automatically.
+
+#### Step 3 — Add a persistent disk
+
+Without a disk, `api_keys.db` is wiped on every deploy. To persist it:
+
+1. In your Render service dashboard, click **Disks** in the left menu
+2. Click **Add Disk**:
+
+   | Setting | Value |
+   |---------|-------|
+   | **Name** | `mcp-data` |
+   | **Mount Path** | `/data` |
+   | **Size** | 1 GB |
+
+3. Click **Save**. Render will redeploy the service automatically.
+
+#### Step 4 — Retrieve your API key
+
+Once the deploy finishes, click **Logs** in the Render dashboard. On first deploy you will see:
+
+```
+Generated default API key: QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80
+```
+
+Copy and save this key. It will not be printed again.
+
+#### Step 5 — Connect a client
+
+Your server is now live at `https://YOUR-SERVICE-NAME.onrender.com/mcp`.
+
+```bash
+uv run -m mcp_examples.cli \
+  --api-key YOUR_API_KEY \
+  --url https://YOUR-SERVICE-NAME.onrender.com/mcp
+```
+
+> **Note:** Free tier Render services spin down after 15 minutes of inactivity. The first request after a period of inactivity may take 30–60 seconds while the service wakes up. Upgrade to a paid instance ($7/mo) to keep it always on.
+
+#### Deploying the contact server instead
+
+To run `ContactMCPServer` instead of `GreetMCPServer`, change the Start Command in Render to:
+
+```
+uv run -m mcp_examples.contacts --transport streamable-http --port $PORT --host 0.0.0.0
+```
+
+Both database files will be stored on the persistent `/data` disk using the environment variables already set above (`MCP_DB_PATH` and `CONTACTS_DB_PATH`).
+
+---
+
+### Fly.io (Free Tier)
+
+[Fly.io](https://fly.io) offers a free tier with shared VMs and free persistent volumes, making it the best zero-cost option for always-on deployment with SQLite persistence.
+
+**Official guides:**
+- [Fly.io getting started](https://fly.io/docs/getting-started/)
+- [Install flyctl](https://fly.io/docs/flyctl/install/)
+- [Fly.io persistent volumes](https://fly.io/docs/volumes/overview/)
+- [Fly.io free tier allowances](https://fly.io/docs/about/pricing/#free-allowances)
+- [Deploying with a Dockerfile on Fly.io](https://fly.io/docs/languages-and-frameworks/dockerfile/)
+
+> **What you need:** The `flyctl` CLI and a free [Fly.io](https://fly.io) account. The `fly.toml` and `Dockerfile` are already included in this repo.
+
+#### Step 1 — Install flyctl
+
+**macOS:**
+```bash
+brew install flyctl
+```
+
+**Windows (PowerShell):**
+```powershell
+pwsh -Command "iwr https://fly.io/install.ps1 -useb | iex"
+```
+
+Confirm installation:
+```bash
+fly version
+```
+
+#### Step 2 — Create a Fly.io account and log in
+
+```bash
+fly auth signup
+```
+
+Or if you already have an account:
+```bash
+fly auth login
+```
+
+#### Step 3 — Create the app
+
+From inside the project directory:
+
+```bash
+fly apps create mcp-example
+```
+
+> If `mcp-example` is already taken, choose a unique name and update the `app` field in `fly.toml` to match.
+
+#### Step 4 — Deploy
+
+```bash
+fly deploy
+```
+
+Fly.io will build the Docker image, push it to its registry, and start the server. The persistent volume defined in `fly.toml` is created automatically on first deploy — you do not need to create it manually.
+
+> **Expected warning during first deploy:** You will see a message like:
+> ```
+> WARNING The app is not listening on the expected address and will not be reachable by fly-proxy.
+> ```
+> This is normal. Fly.io's health check runs about 2 seconds after the machine starts, but the server takes ~5 seconds to initialise the database before it binds to port 8000. The server will be fully running shortly after this warning appears. You can confirm with `fly status`.
+
+#### Step 5 — Retrieve your API key from the logs
+
+The `fly deploy` command does not stream app logs. After the deploy completes, retrieve the API key separately:
+
+```bash
+fly logs | grep "API key"
+```
+
+You will see a line like:
+```
+Generated default API key: or8hEScfF8RBf1GQnWjrmqZvH9qVTFWfd1cdvEQZXKU
+```
+
+Copy and save this key. If `fly logs` has already scrolled past it, retrieve it directly from the database on the volume:
+
+```bash
+fly ssh console -C "sqlite3 /data/api_keys.db 'SELECT key FROM api_keys;'"
+```
+
+#### Step 6 — Confirm the server is running
+
+```bash
+fly status
+```
+
+Look for `started` in the Machines table. Your server is live at `https://mcp-example.fly.dev/mcp`.
+
+#### Step 7 — Connect a client
+
+```bash
+uv run -m mcp_examples.cli \
+  --api-key YOUR_API_KEY \
+  --url https://mcp-example.fly.dev/mcp
+```
+
+#### Deploying the contact server instead
+
+`fly.toml` already sets both `MCP_DB_PATH` and `CONTACTS_DB_PATH` pointing to the `/data` persistent volume. To run the contact server, update the `Dockerfile` CMD:
+
+```dockerfile
+CMD ["uv", "run", "-m", "mcp_examples.contacts", "--transport", "streamable-http", "--port", "8000", "--host", "0.0.0.0"]
+```
+
+Then redeploy:
+```bash
+fly deploy
+```
+
+#### Useful Fly.io commands
+
+```bash
+# View live logs (API key appears here on first deploy)
+fly logs
+
+# Grep logs for the API key specifically
+fly logs | grep "API key"
+
+# Retrieve API key directly from the database if logs have scrolled past it
+fly ssh console -C "sqlite3 /data/api_keys.db 'SELECT key FROM api_keys;'"
+
+# Check app status and confirm the server is running
+fly status
+
+# List persistent volumes
+fly volumes list
+
+# Open an interactive shell inside the running container
+fly ssh console
+
+# Stop the server (scales to zero machines — volume and databases are preserved)
+fly scale count 0
+
+# Redeploy after a code change (rebuilds the Docker image and replaces the machine)
+fly deploy
+
+# Restart the running machine without rebuilding (faster — no new image build)
+fly machines restart
+
+# Note: API key is NOT regenerated on redeploy as long as the volume still contains api_keys.db
+```
+
+---
+
+### Railway
+
+[Railway](https://railway.app) provides $5 of free credit per month and deploys directly from GitHub using your `Procfile` — no Docker configuration needed.
+
+**Official guides:**
+- [Railway getting started](https://docs.railway.app/getting-started)
+- [Railway Procfile deployments](https://docs.railway.app/deploy/config-as-code)
+- [Railway environment variables](https://docs.railway.app/guides/variables)
+- [Railway volumes (persistent storage)](https://docs.railway.app/guides/volumes)
+- [Railway pricing and free tier](https://railway.app/pricing)
+
+> **SQLite limitation:** Railway uses an ephemeral filesystem. `api_keys.db` is wiped on every deploy and restart. Railway offers persistent volumes as a paid add-on. If you need SQLite persistence without paying, use Render or Fly.io instead.
+
+#### Getting started
+
+1. Push the repo to GitHub (see Render Step 1)
+2. Log in to [railway.app](https://railway.app) and click **New Project > Deploy from GitHub repo**
+3. Select your `mcp-example` repository
+4. Railway detects the `Procfile` automatically and starts the deploy
+5. In the service settings, add these environment variables:
+   - `MCP_DB_PATH` = `/data/api_keys.db`
+   - `CONTACTS_DB_PATH` = `/data/contacts.db`
+6. Click **Deploy**
+7. Open **Logs** to find the generated API key on first deploy
+
+Your public URL is shown in the Railway dashboard under **Settings > Domains**.
+
+---
+
+### Docker / VPS Deployment
+
+Use Docker when deploying to a VPS (Hetzner, DigitalOcean, etc.) or any environment where you manage the host directly. The `Dockerfile` is included in the repo.
+
+**Official guides:**
+- [Docker getting started](https://docs.docker.com/get-started/)
+- [Docker install](https://docs.docker.com/engine/install/)
+- [Docker volumes](https://docs.docker.com/storage/volumes/)
+- [Hetzner Cloud (from €3.79/mo)](https://www.hetzner.com/cloud)
+- [DigitalOcean Droplets (from $4/mo)](https://www.digitalocean.com/products/droplets)
+
+#### Build and run locally
+
+```bash
+# Build the image
 docker build -t mcp-server .
 
-# Run container with volume mount
-docker run -p 8000:8000 -v $(pwd)/api_keys.db:/app/api_keys.db mcp-server
-
-# Or run with custom database path via environment variable
+# Run with a local volume mount to persist SQLite databases
 docker run -p 8000:8000 \
-  -e MCP_DB_PATH=/data/keys.db \
+  -e MCP_DB_PATH=/data/api_keys.db \
+  -e CONTACTS_DB_PATH=/data/contacts.db \
   -v $(pwd)/data:/data \
   mcp-server
 ```
 
-### Cloud Deployment
+**Windows (PowerShell):**
+```powershell
+docker run -p 8000:8000 `
+  -e MCP_DB_PATH=/data/api_keys.db `
+  -e CONTACTS_DB_PATH=/data/contacts.db `
+  -v ${PWD}/data:/data `
+  mcp-server
+```
 
-The server can be deployed to any cloud platform that supports Python applications:
+#### Run the contact server instead
 
-#### Railway / Render / Fly.io
+```bash
+docker run -p 8000:8000 \
+  -e MCP_DB_PATH=/data/api_keys.db \
+  -e CONTACTS_DB_PATH=/data/contacts.db \
+  -v $(pwd)/data:/data \
+  mcp-server \
+  uv run -m mcp_examples.contacts --transport streamable-http --port 8000 --host 0.0.0.0
+```
 
-1. Add a `Procfile`:
+#### Expose a local Docker container via ngrok
+
+This approach runs the server in Docker on your local machine and uses ngrok to give it a public HTTPS URL — useful for sharing with others or testing against a real remote endpoint without a cloud account.
+
+> **What you need:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) and ngrok installed (see [Production Deployment with ngrok](#production-deployment-with-ngrok) above for ngrok installation steps).
+
+**Step 1 — Build the image**
+
+From inside the project directory:
+
+```bash
+docker build -t mcp-server .
+```
+
+**Step 2 — Create a local data directory for SQLite persistence**
+
+**macOS:**
+```bash
+mkdir -p data
+```
+
+**Windows (PowerShell):**
+```powershell
+New-Item -ItemType Directory -Force -Path data
+```
+
+**Step 3 — Start the container**
+
+**macOS:**
+```bash
+docker run -p 8000:8000 \
+  -e MCP_DB_PATH=/data/api_keys.db \
+  -e CONTACTS_DB_PATH=/data/contacts.db \
+  -v $(pwd)/data:/data \
+  mcp-server
+```
+
+**Windows (PowerShell):**
+```powershell
+docker run -p 8000:8000 `
+  -e MCP_DB_PATH=/data/api_keys.db `
+  -e CONTACTS_DB_PATH=/data/contacts.db `
+  -v ${PWD}/data:/data `
+  mcp-server
+```
+
+On first run the container prints its API key — copy it now:
+```
+Generated default API key: QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80
+```
+
+If you missed it, retrieve it from the data directory:
+```bash
+sqlite3 data/api_keys.db "SELECT key FROM api_keys;"
+```
+
+**Step 4 — Open a second terminal and start ngrok**
+
+```bash
+ngrok http 8000
+```
+
+ngrok displays a forwarding URL such as `https://abc123.ngrok.app`. Your server is now publicly accessible at `https://abc123.ngrok.app/mcp`.
+
+**Step 5 — Connect a client**
+
+**macOS:**
+```bash
+uv run -m mcp_examples.cli \
+  --api-key YOUR_API_KEY \
+  --url https://YOUR-NGROK-SUBDOMAIN.ngrok.app/mcp
+```
+
+**Windows (PowerShell):**
+```powershell
+uv run -m mcp_examples.cli `
+  --api-key YOUR_API_KEY `
+  --url https://YOUR-NGROK-SUBDOMAIN.ngrok.app/mcp
+```
+
+Or connect any MCP-compatible client to `https://YOUR-NGROK-SUBDOMAIN.ngrok.app/mcp` with `X-API-Key: YOUR_API_KEY` as a header.
+
+> **Note:** The ngrok URL changes every time you restart ngrok on the free tier. Your API key and database persist in the `data/` directory between container restarts because they are stored on the volume mount.
+
+#### To run the contact server in Docker + ngrok
+
+In Step 3, add the contact server command at the end of the `docker run` call:
+
+**macOS:**
+```bash
+docker run -p 8000:8000 \
+  -e MCP_DB_PATH=/data/api_keys.db \
+  -e CONTACTS_DB_PATH=/data/contacts.db \
+  -v $(pwd)/data:/data \
+  mcp-server \
+  uv run -m mcp_examples.contacts --transport streamable-http --port 8000 --host 0.0.0.0
+```
+
+**Windows (PowerShell):**
+```powershell
+docker run -p 8000:8000 `
+  -e MCP_DB_PATH=/data/api_keys.db `
+  -e CONTACTS_DB_PATH=/data/contacts.db `
+  -v ${PWD}/data:/data `
+  mcp-server `
+  uv run -m mcp_examples.contacts --transport streamable-http --port 8000 --host 0.0.0.0
+```
+
+Steps 4 and 5 are identical regardless of which server is running.
+
+---
+
+#### Deploy to a VPS
+
+1. SSH into your server
+2. Install Docker: [docs.docker.com/engine/install](https://docs.docker.com/engine/install/)
+3. Clone the repo and build:
+   ```bash
+   git clone https://github.com/dgwartney/mcp-example.git
+   cd mcp-example
+   docker build -t mcp-server .
+   mkdir -p data
+   docker run -d --restart unless-stopped \
+     -p 8000:8000 \
+     -e MCP_DB_PATH=/data/api_keys.db \
+     -e CONTACTS_DB_PATH=/data/contacts.db \
+     -v $(pwd)/data:/data \
+     mcp-server
    ```
-   web: uv run -m mcp_examples.server --transport streamable-http --port $PORT --host 0.0.0.0
-   ```
-
-2. Set environment variables in your platform:
-   - `MCP_DB_PATH` (optional): Custom database path, e.g., `/data/api_keys.db`
-
-3. Push to your platform's git repository or use their CLI tools
-
-#### AWS Lambda / Google Cloud Functions
-
-For serverless deployment, you'll need to adapt the server to use the platform's event model. FastMCP supports custom transports for this purpose.
+4. Your server is live at `http://YOUR_SERVER_IP:8000/mcp`
 
 ## Security Considerations
 
@@ -1295,6 +1737,9 @@ mcp-example/
 │   └── test_cli.py           # MCPClientApp + integration tests
 ├── auth.py                   # Standalone middleware example (reference)
 ├── api_keys.db               # SQLite database (generated on first run)
+├── Dockerfile                # Container image for Fly.io and VPS deployment
+├── fly.toml                  # Fly.io deployment configuration
+├── Procfile                  # Start command for Render and Railway
 ├── pyproject.toml            # Project dependencies (uv)
 ├── uv.lock                   # Dependency lock file
 ├── pytest.ini                # Pytest configuration

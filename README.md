@@ -4,6 +4,62 @@ A production-ready implementation of Model Context Protocol (MCP) server and cli
 
 **Author:** David Gwartney (david.gwartney@gmail.com)
 
+## Prerequisites
+
+Before you can run this project you need a terminal, Git, and `uv`. You do **not** need to install Python separately — `uv` will download and manage the correct Python version for you.
+
+### 1. Open a terminal
+
+A terminal (also called a shell or command prompt) is where you type commands to run software.
+
+- **macOS**: Press `Cmd + Space`, type `Terminal`, press Enter
+- **Windows**: Search for **PowerShell** in the Start menu and open it. Use PowerShell for all commands in this guide.
+
+### 2. Install Git
+
+Git is the tool used to download (clone) this project from GitHub.
+
+**macOS** — Git is usually pre-installed. Confirm by running:
+```bash
+git --version
+```
+If it is not found, install the Xcode Command Line Tools:
+```bash
+xcode-select --install
+```
+
+**Windows** — Download and run the installer from [git-scm.com/download/win](https://git-scm.com/download/win). Accept the defaults. After installation, close and reopen PowerShell, then confirm:
+```powershell
+git --version
+```
+
+### 3. Install uv
+
+`uv` is the package and Python manager used by this project. It installs all dependencies and the correct version of Python automatically.
+
+**macOS** (Terminal):
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Windows** (PowerShell):
+```powershell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+After installation, close and reopen your terminal, then confirm:
+
+**macOS:**
+```bash
+uv --version
+```
+**Windows:**
+```powershell
+uv --version
+```
+
+> `uv` will automatically download Python 3.12 the first time you run `uv sync` — no separate Python installation needed.
+
 ## Overview
 
 This project demonstrates how to build secure MCP servers and clients with:
@@ -264,53 +320,114 @@ curl -s -X POST http://localhost:8000/mcp \
 |----------|-------------|---------|---------|
 | `MCP_DB_PATH` | Path to SQLite database file | `api_keys.db` in project directory | `/var/data/keys.db` |
 
-**Usage**:
+**macOS:**
 ```bash
-# Set for single command
+# Set for a single command
 MCP_DB_PATH=/tmp/keys.db uv run -m mcp_examples.server
 
-# Export for session
+# Or export for the current terminal session
 export MCP_DB_PATH=/var/data/api_keys.db
+uv run -m mcp_examples.server
+```
+
+**Windows (PowerShell):**
+```powershell
+# Set for the current terminal session
+$env:MCP_DB_PATH = "C:\data\api_keys.db"
 uv run -m mcp_examples.server
 ```
 
 ## Installation
 
-This project uses `uv` for Python package management and virtual environment handling.
-
-### Install uv
-
-```bash
-# macOS and Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Or via Homebrew (macOS)
-brew install uv
-
-# Or via pip
-pip install uv
-```
-
 ### Clone and Setup
 
+Open a terminal, then run these commands one at a time:
+
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd mcp-examples
+# Download the project from GitHub to your machine
+git clone https://github.com/dgwartney/mcp-example.git
 
-# Install dependencies (creates virtual environment automatically)
+# Move into the project directory
+cd mcp-example
+
+# Install dependencies (uv creates a virtual environment automatically)
 uv sync
+```
 
-# Install with test dependencies
+> **What is `cd`?** It stands for "change directory" — it moves your terminal session into the project folder. All subsequent commands must be run from inside this folder.
+
+**Note**: `uv sync` installs all required Python packages into an isolated `.venv/` folder inside the project. You do not need to create a virtual environment manually.
+
+To also install test dependencies:
+```bash
 uv sync --extra test
 ```
 
-**Note**: `uv` automatically creates and manages the virtual environment in `.venv/`. No manual virtual environment creation is needed.
-
 ## Usage
+
+### Authentication Setup
+
+Authentication only applies when the server is running with an HTTP transport (`streamable-http` or `sse`). The `dev` and `stdio` transports bypass authentication entirely and are intended for local development only.
+
+#### How it works
+
+When the server starts in HTTP mode, every incoming request must include an `X-API-Key` header containing a valid key. The server looks up that key in a local SQLite database (`api_keys.db`). Requests with a missing or unrecognised key receive an HTTP 401 response and are not processed.
+
+#### Step 1 — Start the server and get your API key
+
+On first run, the server automatically creates `api_keys.db`, generates a secure random API key, and prints it to the terminal:
+
+```bash
+uv run -m mcp_examples.server --transport streamable-http --port 8000
+```
+
+```
+Generated default API key: QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80
+```
+
+**Copy this key and save it somewhere safe.** The server will not print it again on subsequent runs.
+
+#### Step 2 — Recover the key if you missed it
+
+If you did not save the key, look it up directly in the database:
+
+**macOS:**
+```bash
+sqlite3 api_keys.db "SELECT * FROM api_keys;"
+```
+
+**Windows (PowerShell):**
+```powershell
+sqlite3 api_keys.db "SELECT * FROM api_keys;"
+```
+
+> **Windows users**: `sqlite3` is not installed by default. See the [Managing API Keys](#managing-api-keys) section for installation options.
+
+#### Step 3 — Use the key in client requests
+
+Pass the key in the `X-API-Key` header on every request. Examples for the tools in this project:
+
+**Built-in client (`mcp-client`):**
+```bash
+uv run -m mcp_examples.cli --api-key YOUR_API_KEY --url http://localhost:8000/mcp
+```
+
+**curl:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
+```
+
+**Any MCP-compatible client**: configure the server URL as `http://localhost:8000/mcp` and add `X-API-Key: YOUR_API_KEY` as a custom header.
+
+#### Adding and revoking keys
+
+See [Managing API Keys](#managing-api-keys) below for how to add additional keys or revoke existing ones.
+
+---
 
 ### Running the Server
 
@@ -320,45 +437,78 @@ uv sync --extra test
 uv run -m mcp_examples.server
 ```
 
-On first run, the server will generate a default API key and print it to stdout:
-
-```
-Generated default API key: QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80
-```
-
-**Save this key!** You'll need it for client authentication.
+> **Note**: stdio transport does not require an API key. Use HTTP transport (Option 2) for authenticated remote access.
 
 #### Database Path Configuration
 
-By default, the server creates `api_keys.db` in the project directory. You can customize this location using the `MCP_DB_PATH` environment variable:
+By default, the server creates `api_keys.db` in the project directory. You can customize this using the `MCP_DB_PATH` environment variable:
 
+**macOS:**
 ```bash
-# Use custom database path
-MCP_DB_PATH=/var/data/api_keys.db uv run -m mcp_examples.server
-
-# Use database in /tmp
 MCP_DB_PATH=/tmp/mcp_keys.db uv run -m mcp_examples.server
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:MCP_DB_PATH = "C:\data\mcp_keys.db"
+uv run -m mcp_examples.server
 ```
 
 #### Option 2: HTTP Transport (for remote clients)
 
 ```bash
-# Using uv
-uv run fastmcp run mcp_examples/server.py --transport http --port 8000
-
-# Using fastmcp directly
-fastmcp run mcp_examples/server.py --transport http --port 8000
+uv run fastmcp run mcp_examples/server.py --transport streamable-http --port 8000
 ```
 
 #### Option 3: Using FastMCP CLI Development Server
 
 ```bash
-fastmcp dev mcp_examples/server.py
+uv run fastmcp dev mcp_examples/server.py
 ```
 
-### Running the Client
+### Using the FastMCP CLI
 
-The client requires an API key for authentication. Use the key printed by the server on first run.
+The `fastmcp` CLI provides three useful commands for working with the servers in this project.
+
+#### Inspect a server's tools
+
+`fastmcp inspect` shows all registered tools, their parameters, and descriptions without starting the server:
+
+```bash
+# Inspect the greet server
+uv run fastmcp inspect mcp_examples/server.py
+
+# Inspect the contact server
+uv run fastmcp inspect mcp_examples/contacts.py
+```
+
+#### Interactively test with MCP Inspector
+
+`fastmcp dev` starts the server and opens the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) UI in your browser, letting you call tools interactively:
+
+```bash
+# Develop/test the greet server
+uv run fastmcp dev mcp_examples/server.py
+
+# Develop/test the contact server
+uv run fastmcp dev mcp_examples/contacts.py
+```
+
+The Inspector UI will open at `http://localhost:5173` by default. You can call any tool directly from the browser — no API key is required because `dev` mode uses the stdio transport, bypassing the HTTP middleware.
+
+#### Connect to a running remote server
+
+`fastmcp run <url>` connects to an already-running HTTP server and creates a local proxy. This is useful for inspecting or relaying a live server:
+
+```bash
+uv run fastmcp run http://localhost:8000/mcp --transport streamable-http
+```
+
+### Running the Built-in Client (`mcp-client`)
+
+The project includes a minimal Python client (`mcp_examples/cli.py`) registered as the `mcp-client` console script. It connects to a running HTTP server and calls the `greet` tool only — it does not support the contact server tools.
+
+> To interact with the contact server tools (`search_by_last_name`, `search_by_email`, `search_by_account_id`, `authenticate`), use `fastmcp dev` (interactive) or `curl` (see the Contact Server section above).
 
 #### Basic Usage
 
@@ -375,10 +525,16 @@ uv run -m mcp_examples.cli --api-key YOUR_API_KEY --name Alice
 # Custom server URL
 uv run -m mcp_examples.cli --api-key YOUR_API_KEY --url http://localhost:8000/mcp
 
-# All parameters
+# All parameters (macOS)
 uv run -m mcp_examples.cli \
   --api-key YOUR_API_KEY \
   --name Bob \
+  --url http://localhost:8000/mcp
+
+# All parameters (Windows PowerShell)
+uv run -m mcp_examples.cli `
+  --api-key YOUR_API_KEY `
+  --name Bob `
   --url http://localhost:8000/mcp
 ```
 
@@ -428,9 +584,17 @@ uv run pytest
 ```bash
 # Terminal report with missing lines (configured via pytest.ini)
 uv run pytest
+```
 
-# HTML coverage report (opens in browser)
+Open the HTML coverage report in a browser:
+
+**macOS:**
+```bash
 open htmlcov/index.html
+```
+**Windows (PowerShell):**
+```powershell
+start htmlcov\index.html
 ```
 
 #### Run Specific Test Files
@@ -506,7 +670,9 @@ TOTAL                          104      4  96.15%
 
 ### Managing API Keys
 
-API keys are stored in `api_keys.db` SQLite database. You can manage keys directly:
+API keys are stored in `api_keys.db` SQLite database. You can manage keys directly using the `sqlite3` command-line tool.
+
+> **Windows users**: `sqlite3` is not installed by default. Download it from [sqlite.org/download](https://www.sqlite.org/download.html) (look for "sqlite-tools" under "Precompiled Binaries for Windows"), unzip it, and add the folder to your PATH — or use [DB Browser for SQLite](https://sqlitebrowser.org/) for a graphical interface instead.
 
 #### View Existing Keys
 
@@ -518,7 +684,7 @@ sqlite3 api_keys.db "SELECT * FROM api_keys;"
 
 ```bash
 # Generate a secure random key
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+uv run python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 # Add to database
 sqlite3 api_keys.db "INSERT INTO api_keys (key) VALUES ('YOUR_NEW_KEY');"
@@ -530,18 +696,100 @@ sqlite3 api_keys.db "INSERT INTO api_keys (key) VALUES ('YOUR_NEW_KEY');"
 sqlite3 api_keys.db "DELETE FROM api_keys WHERE key = 'KEY_TO_REVOKE';"
 ```
 
+### Managing Contacts
+
+Contact records are stored in `contacts.db` and auto-seeded with 20 Warner Bros. characters on first run. You can view, add, update, and delete records directly with `sqlite3` (see the Windows note in [Managing API Keys](#managing-api-keys) if `sqlite3` is not installed).
+
+#### View All Contacts
+
+```bash
+sqlite3 contacts.db "SELECT Id, FirstName, LastName, Email, AccountName FROM contacts;"
+```
+
+#### Search for a Contact
+
+```bash
+# By last name
+sqlite3 contacts.db "SELECT * FROM contacts WHERE LastName LIKE '%Bunny%';"
+
+# By email
+sqlite3 contacts.db "SELECT * FROM contacts WHERE Email = 'bugs.bunny@acme.com' COLLATE NOCASE;"
+
+# By account ID
+sqlite3 contacts.db "SELECT * FROM contacts WHERE AccountId = '0011A00001xAC001';"
+```
+
+#### Add a New Contact
+
+```bash
+sqlite3 contacts.db "
+INSERT INTO contacts (
+  Id, FirstName, LastName, Salutation, Name,
+  Email, Phone, MobilePhone, Title, Department,
+  AccountId, AccountName,
+  MailingStreet, MailingCity, MailingState, MailingPostalCode, MailingCountry,
+  LeadSource, OwnerId, CreatedDate, LastModifiedDate,
+  Description, DoNotCall, HasOptedOutOfEmail, IsDeleted,
+  ContactSource, CaseCount, Password
+) VALUES (
+  '0031A00001aBC021', 'Elmer', 'Sample', 'Mr.', 'Elmer Sample',
+  'elmer.sample@example.com', '555-9999', '555-9998', 'Test User', 'Engineering',
+  '0011A00001xAC001', 'ACME Corporation',
+  '1 Test St', 'Burbank', 'CA', '91505', 'US',
+  'Web', '0051A000001owner', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z',
+  'Test contact.', 0, 0, 0,
+  'Inbound', 0, 'changeme123'
+);"
+```
+
+#### Update a Contact's Password
+
+```bash
+sqlite3 contacts.db "UPDATE contacts SET Password = 'newpassword!' WHERE Email = 'bugs.bunny@acme.com' COLLATE NOCASE;"
+```
+
+#### Delete a Contact
+
+```bash
+sqlite3 contacts.db "DELETE FROM contacts WHERE Id = '0031A00001aBC021';"
+```
+
+#### Reset to Seed Data
+
+To wipe all contacts and re-seed with the original 20 Warner Bros. characters, delete the database file and restart the server — it will recreate and re-seed automatically:
+
+**macOS:**
+```bash
+rm contacts.db
+uv run -m mcp_examples.contacts
+```
+
+**Windows (PowerShell):**
+```powershell
+del contacts.db
+uv run -m mcp_examples.contacts
+```
+
 ## Deployment
 
 ### Local Development
 
 1. Start the server with HTTP transport:
    ```bash
-   uv run fastmcp run mcp_examples/server.py --transport http --port 8000
+   uv run -m mcp_examples.server --transport streamable-http --port 8000
    ```
 
-2. (Optional) Use custom database location:
+2. (Optional) Use a custom database location:
+
+   **macOS:**
    ```bash
-   MCP_DB_PATH=/tmp/dev_keys.db uv run fastmcp run mcp_examples/server.py --transport http --port 8000
+   MCP_DB_PATH=/tmp/dev_keys.db uv run -m mcp_examples.server --transport streamable-http --port 8000
+   ```
+
+   **Windows (PowerShell):**
+   ```powershell
+   $env:MCP_DB_PATH = "C:\tmp\dev_keys.db"
+   uv run -m mcp_examples.server --transport streamable-http --port 8000
    ```
 
 3. Test with the client:
@@ -553,30 +801,63 @@ sqlite3 api_keys.db "DELETE FROM api_keys WHERE key = 'KEY_TO_REVOKE';"
 
 For exposing your local server to the internet (useful for development and demos):
 
-1. Install ngrok:
+1. Clone and set up the project (if you haven't already — see [Clone and Setup](#clone-and-setup)):
    ```bash
-   # macOS
+   git clone https://github.com/dgwartney/mcp-example.git
+   cd mcp-example
+   uv sync
+   ```
+
+2. Install ngrok:
+
+   **macOS:**
+   ```bash
    brew install ngrok
-
-   # Or download from https://ngrok.com/download
    ```
 
-2. Start the server:
+   **Windows:** Download the installer from [ngrok.com/download](https://ngrok.com/download), run it, and follow the prompts. After installation, open a new PowerShell window.
+
+3. Start the server you want to expose:
+
+   **Greet server:**
    ```bash
-   uv run fastmcp run mcp_examples/server.py --transport http --port 8000
+   uv run -m mcp_examples.server --transport streamable-http --port 8000
    ```
 
-3. Create ngrok tunnel:
+   **Contact server:**
+   ```bash
+   uv run -m mcp_examples.contacts --transport streamable-http --port 8000
+   ```
+
+   On first run, the server prints its API key — save it:
+   ```
+   Generated default API key: QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80
+   ```
+
+4. In a second terminal, create the ngrok tunnel:
    ```bash
    ngrok http 8000
    ```
 
-4. Use the ngrok URL with your client:
+   ngrok will display a forwarding URL like `https://abc123.ngrok.app`.
+
+5. Use the ngrok URL with the built-in client:
+
+   **macOS:**
    ```bash
    uv run -m mcp_examples.cli \
      --api-key YOUR_API_KEY \
      --url https://YOUR-NGROK-SUBDOMAIN.ngrok.app/mcp
    ```
+
+   **Windows (PowerShell):**
+   ```powershell
+   uv run -m mcp_examples.cli `
+     --api-key YOUR_API_KEY `
+     --url https://YOUR-NGROK-SUBDOMAIN.ngrok.app/mcp
+   ```
+
+   Or connect any MCP-compatible client to `https://YOUR-NGROK-SUBDOMAIN.ngrok.app/mcp` with the `X-API-Key` header set to your API key.
 
 ### Docker Deployment
 

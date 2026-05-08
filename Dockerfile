@@ -5,7 +5,8 @@ WORKDIR /app
 # Ensure Python stdout/stderr is unbuffered so logs appear immediately in docker logs
 ENV PYTHONUNBUFFERED=1
 
-# Install uv
+# Install sqlite3 CLI and uv
+RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Copy dependency files first for layer caching
@@ -20,4 +21,4 @@ RUN mkdir -p /data
 
 EXPOSE 8000
 
-CMD ["uv", "run", "-m", "mcp_examples.server", "--transport", "streamable-http", "--port", "8000", "--host", "0.0.0.0"]
+CMD ["uv", "run", "-m", "mcp_examples.contacts", "--transport", "streamable-http", "--port", "8000", "--host", "0.0.0.0"]

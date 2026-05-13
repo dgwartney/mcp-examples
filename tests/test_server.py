@@ -75,6 +75,23 @@ class TestGreetMCPServer:
         assert server_module.mcp == server_module.server.mcp
 
 
+class TestPackageInit:
+    """Tests for mcp_examples.__init__ lazy import mechanism."""
+
+    def test_lazy_import_returns_class(self):
+        """Accessing WikipediaMCPServer via the package triggers __getattr__."""
+        import mcp_examples
+        cls = mcp_examples.WikipediaMCPServer
+        from mcp_examples.wikipedia import WikipediaMCPServer
+        assert cls is WikipediaMCPServer
+
+    def test_unknown_attribute_raises_attribute_error(self):
+        """Accessing an unknown attribute raises AttributeError."""
+        import mcp_examples
+        with pytest.raises(AttributeError):
+            _ = mcp_examples.NonExistentClass
+
+
 class TestIntegration:
     """Integration tests for complete workflows."""
 

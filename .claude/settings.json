@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "parcel-mcp": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/dgwartney/git/parcel-mcp",
+        "orders-mcp",
+        "serve-mcp",
+        "--transport",
+        "stdio"
+      ]
+    }
+  }
+}

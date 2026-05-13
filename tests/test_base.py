@@ -106,3 +106,53 @@ class TestAuthenticatedMCPServer:
 
             assert hasattr(server, 'run')
             assert callable(server.run)
+
+    def test_run_stdio_does_not_add_middleware(self, temp_db_path):
+        """Test that stdio transport does not inject HTTP middleware."""
+        with patch.object(DatabaseManager, 'init_db'):
+            server = StubMCPServer(db_path=temp_db_path)
+            with patch.object(server.mcp, 'run') as mock_run:
+                server.run()
+                kwargs = mock_run.call_args[1] if mock_run.call_args else {}
+                assert "middleware" not in kwargs
+
+    def test_run_http_transport_adds_middleware(self, temp_db_path):
+        """Test that streamable-http transport injects API key middleware."""
+        with patch.object(DatabaseManager, 'init_db'):
+            server = StubMCPServer(db_path=temp_db_path)
+            with patch.object(server.mcp, 'run') as mock_run:
+                server.run(transport="streamable-http", host="127.0.0.1", port=8000)
+                kwargs = mock_run.call_args[1]
+                assert "middleware" in kwargs
+                assert len(kwargs["middleware"]) == 1
+                assert kwargs["middleware"][0].cls is ApiKeyMiddleware
+
+    def test_run_sse_transport_adds_middleware(self, temp_db_path):
+        """Test that sse transport also injects middleware."""
+        with patch.object(DatabaseManager, 'init_db'):
+            server = StubMCPServer(db_path=temp_db_path)
+            with patch.object(server.mcp, 'run') as mock_run:
+                server.run(transport="sse")
+                kwargs = mock_run.call_args[1]
+                assert "middleware" in kwargs
+
+    def test_main_stdio_calls_run_with_no_args(self, temp_db_path):
+        """Test that main() with --transport stdio calls run() with no args."""
+        with patch.object(DatabaseManager, 'init_db'):
+            server = StubMCPServer(db_path=temp_db_path)
+            with patch.object(server, 'run') as mock_run, \
+                 patch('sys.argv', ['prog']):
+                server.main()
+                mock_run.assert_called_once_with()
+
+    def test_main_http_transport_passes_args(self, temp_db_path):
+        """Test that main() with streamable-http passes transport/host/port."""
+        with patch.object(DatabaseManager, 'init_db'):
+            server = StubMCPServer(db_path=temp_db_path)
+            with patch.object(server, 'run') as mock_run, \
+                 patch('sys.argv', ['prog', '--transport', 'streamable-http',
+                                    '--port', '9000', '--host', '0.0.0.0']):
+                server.main()
+                mock_run.assert_called_once_with(
+                    transport='streamable-http', host='0.0.0.0', port=9000
+                )

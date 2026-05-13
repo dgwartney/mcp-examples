@@ -138,3 +138,65 @@ class TestContactMCPServerIntegration:
         """Test that authenticate returns None for invalid credentials."""
         result = server.contact_db.authenticate("bugs.bunny@acme.com", "wrong")
         assert result is None
+
+
+class TestContactMCPServerToolFunctions:
+    """Tests that invoke the registered tool closures directly."""
+
+    @pytest.fixture
+    def temp_db_path(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        yield path
+        if os.path.exists(path):
+            os.remove(path)
+
+    @pytest.fixture
+    def temp_contact_db_path(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        yield path
+        if os.path.exists(path):
+            os.remove(path)
+
+    @pytest.fixture
+    def server(self, temp_db_path, temp_contact_db_path):
+        return ContactMCPServer(
+            db_path=temp_db_path,
+            contact_db_path=temp_contact_db_path,
+        )
+
+    def _tool(self, server, name):
+        return server.mcp._tool_manager._tools[name].fn
+
+    def test_search_by_last_name_tool_returns_results(self, server):
+        """Invoke the search_by_last_name tool closure directly."""
+        results = self._tool(server, "search_by_last_name")(last_name="bunny")
+        assert len(results) == 2
+        assert all(r["LastName"].lower() == "bunny" for r in results)
+
+    def test_search_by_email_tool_returns_result(self, server):
+        """Invoke the search_by_email tool closure directly."""
+        results = self._tool(server, "search_by_email")(email="daffy.duck@acme.com")
+        assert len(results) == 1
+        assert results[0]["FirstName"] == "Daffy"
+
+    def test_search_by_account_id_tool_returns_results(self, server):
+        """Invoke the search_by_account_id tool closure directly."""
+        results = self._tool(server, "search_by_account_id")(account_id="0011A00001xAC001")
+        assert len(results) == 4
+
+    def test_authenticate_tool_success(self, server):
+        """Invoke the authenticate tool closure with valid credentials."""
+        result = self._tool(server, "authenticate")(
+            email="bugs.bunny@acme.com", password="bugs2022!"
+        )
+        assert result["FirstName"] == "Bugs"
+        assert "Password" not in result
+
+    def test_authenticate_tool_failure_raises_tool_error(self, server):
+        """Invoke the authenticate tool closure with bad credentials."""
+        with pytest.raises(ToolError, match="Authentication failed"):
+            self._tool(server, "authenticate")(
+                email="bugs.bunny@acme.com", password="wrongpassword"
+            )

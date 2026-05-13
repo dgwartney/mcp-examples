@@ -1,6 +1,6 @@
 # Servers
 
-This project provides two MCP servers built on a shared authenticated base class.
+This project provides three MCP servers built on a shared authenticated base class.
 
 ## Greet Server (`mcp_examples/server.py`)
 
@@ -47,6 +47,38 @@ A Salesforce-style CRM server backed by a SQLite contacts database, auto-seeded 
 | Mars Technologies | Marvin Martian, Gossamer Monster, Witch Hazel |
 
 Each record includes fields: `Id`, `FirstName`, `LastName`, `Email`, `Phone`, `MobilePhone`, `Title`, `Department`, `AccountId`, `AccountName`, `MailingStreet`, `MailingCity`, `MailingState`, `MailingPostalCode`, `MailingCountry`, and more.
+
+## Wikipedia Server (`mcp_examples/wikipedia.py`)
+
+Queries the Wikipedia REST API and MediaWiki Action API to search and retrieve article content. Demonstrates how to build a tool-rich MCP server that calls an external HTTP API.
+
+- **WikipediaMCPServer** (`wikipedia.py`): Subclass of `AuthenticatedMCPServer` with an `httpx.Client` for outbound Wikipedia requests
+- **API key auth**: Same middleware-based authentication as the other servers
+- **HTML stripping**: Strips HTML tags from Wikipedia excerpts before returning them to the caller
+
+### Tools
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `search_pages` | `query: str, limit: int = 10` | Full-text search; returns title, excerpt, description, and thumbnail URL for each result (limit: 1–100) |
+| `search_titles` | `query: str, limit: int = 10` | Autocomplete-style title search; best for finding the exact page title to use with `get_page_summary` (limit: 1–100) |
+| `get_page_summary` | `title: str` | Fetch a page's plain-text extract, short description, canonical URL, and thumbnail. Accepts spaces or underscores in the title |
+| `get_related_pages` | `title: str, limit: int = 10` | Semantically related articles via the MediaWiki `morelike:` operator (limit: 1–50) |
+
+### Running
+
+```bash
+# stdio transport (default)
+uv run -m mcp_examples.wikipedia
+
+# HTTP transport
+uv run -m mcp_examples.wikipedia --transport streamable-http --port 8001
+
+# Custom database path
+MCP_DB_PATH=/var/data/keys.db uv run -m mcp_examples.wikipedia
+```
+
+---
 
 ## Architecture
 
@@ -112,6 +144,7 @@ mcp-example/
 │   ├── contact_database.py    # ContactDatabaseManager (mock contacts)
 │   ├── contacts.py            # ContactMCPServer + module-level mcp instance
 │   ├── server.py              # GreetMCPServer + module-level mcp instance
+│   ├── wikipedia.py           # WikipediaMCPServer + module-level mcp instance
 │   ├── client.py              # MCPClient (remote tool invocation)
 │   └── cli.py                 # MCPClientApp CLI + main() entry point
 ├── tests/                     # Test suite

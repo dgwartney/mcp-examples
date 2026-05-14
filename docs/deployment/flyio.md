@@ -102,7 +102,7 @@ uv run -m mcp_examples.cli \
 
 ### Which servers are deployed
 
-The `Dockerfile` runs the **combined server**, which mounts all four MCP servers at separate URL paths:
+The `Dockerfile` runs the **combined server**, which mounts all five MCP servers at separate URL paths:
 
 | Path | Server |
 |------|--------|
@@ -110,14 +110,28 @@ The `Dockerfile` runs the **combined server**, which mounts all four MCP servers
 | `https://mcp-example.fly.dev/contacts/mcp` | Contact server |
 | `https://mcp-example.fly.dev/wikipedia/mcp` | Wikipedia server |
 | `https://mcp-example.fly.dev/weather/mcp` | Weather server |
+| `https://mcp-example.fly.dev/twilio/mcp` | Twilio SMS + SendGrid email server |
 
-One API key (stored in the shared `/data/api_keys.db` volume) authenticates to all four paths.
+One API key (stored in the shared `/data/api_keys.db` volume) authenticates to all five paths.
 
-> **Weather server requires an API key from OpenWeatherMap.** Before deploying, set it as a Fly.io secret (not in `fly.toml`):
+> **Server credentials must be set as Fly.io secrets** — never put API keys in `fly.toml`. Set all credentials before deploying:
+>
 > ```bash
+> # OpenWeatherMap (https://openweathermap.org/api)
 > fly secrets set OPENWEATHER_API_KEY=<your_key>
+>
+> # Twilio (https://console.twilio.com)
+> fly secrets set TWILIO_ACCOUNT_SID=<your_account_sid>
+> fly secrets set TWILIO_AUTH_TOKEN=<your_auth_token>
+> fly secrets set TWILIO_FROM_NUMBER=<your_e164_number>   # e.g. +15551234567
+>
+> # SendGrid (https://app.sendgrid.com/settings/api_keys)
+> fly secrets set SENDGRID_API_KEY=<your_sg_key>
+> fly secrets set SENDGRID_FROM_EMAIL=<verified_sender_address>
+> fly secrets set SENDGRID_FROM_NAME="Your Name"          # optional
 > ```
-> Get a free key at https://openweathermap.org/api.
+>
+> Secrets are injected as environment variables at runtime. They are never stored in the image or version control. Any missing credential causes the corresponding tool to return a `ToolError` at call time — the server still starts normally.
 
 To add a new server to the deployment, append one entry to `SERVER_REGISTRY` in `mcp_examples/combined.py` and run `fly deploy`. See [docs/servers.md](../servers.md#combined-server) for details.
 
@@ -156,9 +170,15 @@ curl -s -X POST https://mcp-example.fly.dev/weather/mcp \
   -H "Accept: application/json, text/event-stream" \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+
+curl -s -X POST https://mcp-example.fly.dev/twilio/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
 ```
 
-A successful response for each includes the server name in the `serverInfo` field: `"name":"GreetMCP"`, `"name":"ContactMCP"`, `"name":"WikipediaMCP"`, or `"name":"WeatherMCP"`.
+A successful response for each includes the server name in the `serverInfo` field: `"name":"GreetMCP"`, `"name":"ContactMCP"`, `"name":"WikipediaMCP"`, `"name":"WeatherMCP"`, or `"name":"TwilioMCP"`.
 
 ---
 

@@ -77,6 +77,8 @@ class WeatherMCPServer(AuthenticatedMCPServer):
                 "Get the current weather conditions for a city or location using "
                 "One Call API 3.0. Returns temperature, humidity, wind, UV index, "
                 "visibility, and a short description. "
+                "location: city name (e.g. 'London'), city+country (e.g. 'Paris,FR'), "
+                "or city+state+country for US cities (e.g. 'San Jose,CA,US'). "
                 "units: 'metric' (Celsius), 'imperial' (Fahrenheit), 'standard' (Kelvin)."
             )
         )
@@ -163,6 +165,9 @@ class WeatherMCPServer(AuthenticatedMCPServer):
                 "Get a multi-day weather forecast for a city or location using "
                 "One Call API 3.0. Returns daily summaries with min/max temperature, "
                 "description, humidity, wind, and a plain-English summary. "
+                "location: city name (e.g. 'London'), city+country (e.g. 'Tokyo,JP'), "
+                "or city+state+country for US cities (e.g. 'San Jose,CA,US'). "
+                "days: number of days to return (1–8, default 7). "
                 "units: 'metric' (Celsius), 'imperial' (Fahrenheit), 'standard' (Kelvin)."
             )
         )
@@ -239,7 +244,9 @@ class WeatherMCPServer(AuthenticatedMCPServer):
             description=(
                 "Get the current air quality index (AQI) and key pollutant levels "
                 "for a city or location. AQI scale: 1=Good, 2=Fair, 3=Moderate, "
-                "4=Poor, 5=Very Poor. Uses the free Air Pollution API."
+                "4=Poor, 5=Very Poor. Uses the free Air Pollution API. "
+                "location: city name (e.g. 'Beijing'), city+country (e.g. 'London,GB'), "
+                "or city+state+country for US cities (e.g. 'Los Angeles,CA,US')."
             )
         )
         def get_air_quality(location: str) -> dict:
@@ -303,6 +310,8 @@ class WeatherMCPServer(AuthenticatedMCPServer):
 
     def _geocode(self, location: str) -> tuple[float, float, str, str]:
         """Return (lat, lon, city_name, country) for a location string."""
+        # Normalize spaces around commas: "San Jose, CA" → "San Jose,CA"
+        location = ",".join(part.strip() for part in location.split(","))
         try:
             resp = self._http.get(
                 f"{_GEO_URL}/geo/1.0/direct",

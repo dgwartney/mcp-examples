@@ -185,6 +185,18 @@ OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather --transport streamable-
 
 Run Steps 1 and 2 from the Greet Server section above (same commands). Then call any weather tool:
 
+#### Location format
+
+All weather tools accept a `location` string in these forms:
+
+| Format | Example |
+|--------|---------|
+| City name | `London` |
+| City + country code | `Paris,FR` |
+| City + state + country (US) | `San Jose,CA,US` |
+
+Spaces around commas are ignored — `"San Jose, CA, US"` and `"San Jose,CA,US"` both work. For US cities, include both the state code and `US` to avoid ambiguity (e.g. `CA` alone resolves to Canada).
+
 **Get current weather:**
 ```bash
 curl -s -X POST http://localhost:8000/mcp \
@@ -203,7 +215,7 @@ curl -s -X POST http://localhost:8000/mcp \
   }'
 ```
 
-**Get 5-day forecast:**
+**Get 7-day forecast:**
 ```bash
 curl -s -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
@@ -216,7 +228,25 @@ curl -s -X POST http://localhost:8000/mcp \
     "method": "tools/call",
     "params": {
       "name": "get_forecast",
-      "arguments": {"location": "Tokyo,JP", "days": 5, "units": "metric"}
+      "arguments": {"location": "Tokyo,JP", "days": 7, "units": "metric"}
+    }
+  }'
+```
+
+**Get forecast for a US city:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "get_forecast",
+      "arguments": {"location": "San Jose,CA,US", "days": 5, "units": "imperial"}
     }
   }'
 ```
@@ -230,11 +260,91 @@ curl -s -X POST http://localhost:8000/mcp \
   -H "Mcp-Session-Id: $SESSION_ID" \
   -d '{
     "jsonrpc": "2.0",
-    "id": 4,
+    "id": 5,
     "method": "tools/call",
     "params": {
       "name": "get_air_quality",
       "arguments": {"location": "Beijing"}
+    }
+  }'
+```
+
+---
+
+### Twilio Server
+
+Start the server first:
+```bash
+TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_FROM_NUMBER=<number> \
+SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
+  uv run -m mcp_examples.twilio_server --transport streamable-http --port 8000
+```
+
+Run Steps 1 and 2 from the Greet Server section above (same commands). Then call any messaging tool:
+
+**Send an SMS:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "send_sms",
+      "arguments": {
+        "to": "+15551234567",
+        "body": "Hello from the MCP Twilio server!"
+      }
+    }
+  }'
+```
+
+**Send a plain-text email:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "send_email",
+      "arguments": {
+        "to": "recipient@example.com",
+        "subject": "Hello from MCP",
+        "plain_text": "This is a plain-text email sent via the MCP Twilio server."
+      }
+    }
+  }'
+```
+
+**Send an HTML email (multipart):**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "send_email",
+      "arguments": {
+        "to": "recipient@example.com",
+        "to_name": "Alice Smith",
+        "subject": "Hello from MCP (HTML)",
+        "plain_text": "This is the plain-text fallback.",
+        "html": "<h1>Hello!</h1><p>This is an <strong>HTML</strong> email sent via the MCP Twilio server.</p>"
+      }
     }
   }'
 ```

@@ -54,14 +54,26 @@ Queries the [OpenWeatherMap API](https://openweathermap.org/api) to provide curr
 
 - **WeatherMCPServer** (`weather.py`): Subclass of `AuthenticatedMCPServer` with an `httpx.Client` for outbound OpenWeatherMap requests
 - **API key auth**: Same middleware-based authentication as the other servers
-- **Geocoding**: `get_air_quality` automatically geocodes the city name to lat/lon before fetching air data
+- **Geocoding**: All three tools automatically geocode the location name to lat/lon using the OpenWeatherMap Geocoding API before fetching data
+
+### Location format
+
+All tools accept a `location` string in any of these forms:
+
+| Format | Example | Use when |
+|--------|---------|----------|
+| City name only | `London` | Unambiguous city names |
+| City + country code | `Paris,FR` | Disambiguate cities that appear in multiple countries |
+| City + state + country | `San Jose,CA,US` | US cities — state code required to avoid matching other countries |
+
+> **Note:** Spaces around commas are ignored (`"San Jose, CA, US"` and `"San Jose,CA,US"` both work). Country and state codes follow [ISO 3166](https://en.wikipedia.org/wiki/List_of_ISO_3166_country_codes) two-letter codes.
 
 ### Tools
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `get_current_weather` | `location: str, units: str = "metric"` | Current conditions: temperature, humidity, pressure, wind, visibility, sunrise/sunset. `units`: `metric` (°C), `imperial` (°F), `standard` (K) |
-| `get_forecast` | `location: str, days: int = 5, units: str = "metric"` | Daily forecast summaries for up to 5 days: min/max temp, description, humidity, wind (days clamped 1–5) |
+| `get_forecast` | `location: str, days: int = 7, units: str = "metric"` | Daily forecast summaries for up to 8 days: min/max temp, description, humidity, wind (days clamped 1–8) |
 | `get_air_quality` | `location: str` | Current AQI (1=Good … 5=Very Poor) and pollutant levels: CO, NO₂, O₃, PM2.5, PM10 |
 
 ### Running
@@ -111,9 +123,53 @@ MCP_DB_PATH=/var/data/keys.db uv run -m mcp_examples.wikipedia
 
 ---
 
+## Twilio / SendGrid Server (`mcp_examples/twilio_server.py`)
+
+Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) and email via the [SendGrid v3 Mail Send API](https://docs.sendgrid.com/api-reference/mail-send/mail-send). Supports plain-text and HTML email in a single tool call.
+
+- **TwilioMCPServer** (`twilio_server.py`): Subclass of `AuthenticatedMCPServer` with an `httpx.Client` for outbound Twilio and SendGrid requests
+- **API key auth**: Same middleware-based authentication as the other servers
+
+### Required environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `TWILIO_ACCOUNT_SID` | Twilio account SID (starts with `AC`) |
+| `TWILIO_AUTH_TOKEN` | Twilio auth token |
+| `TWILIO_FROM_NUMBER` | Default sending number in E.164 format (e.g. `+15551234567`) |
+| `SENDGRID_API_KEY` | SendGrid API key (starts with `SG.`) |
+| `SENDGRID_FROM_EMAIL` | Verified sender email address |
+| `SENDGRID_FROM_NAME` | *(optional)* Display name shown in the From field |
+
+### Tools
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `send_sms` | `to: str, body: str, from_number: str = None` | Send an SMS via Twilio. `to` must be E.164 format (e.g. `+15551234567`). Returns the Twilio message `sid` and delivery `status`. |
+| `send_email` | `to: str, subject: str, plain_text: str, html: str = None, to_name: str = None, from_email: str = None, from_name: str = None` | Send an email via SendGrid. If `html` is provided the message is sent as multipart/alternative so mail clients can choose the best format. Returns SendGrid `message_id`. |
+
+### Running
+
+```bash
+# stdio transport (default)
+TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_FROM_NUMBER=<number> \
+SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
+  uv run -m mcp_examples.twilio_server
+
+# HTTP transport
+TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_FROM_NUMBER=<number> \
+SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
+  uv run -m mcp_examples.twilio_server --transport streamable-http --port 8003
+
+# Custom database path
+MCP_DB_PATH=/var/data/keys.db TWILIO_ACCOUNT_SID=<sid> ... uv run -m mcp_examples.twilio_server
+```
+
+---
+
 ## Combined Server (`mcp_examples/combined.py`) {#combined-server}
 
-Mounts all four servers into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
+Mounts all five servers into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
 
 ### URL paths
 
@@ -123,6 +179,7 @@ Mounts all four servers into a single process, each at its own URL path. This is
 | `/contacts/mcp` | Contact server |
 | `/wikipedia/mcp` | Wikipedia server |
 | `/weather/mcp` | Weather server |
+| `/twilio/mcp` | Twilio SMS + SendGrid email server |
 
 ### How it works
 
@@ -140,6 +197,7 @@ SERVER_REGISTRY: list[tuple[str, type]] = [
     ("contacts",  ContactMCPServer),
     ("wikipedia", WikipediaMCPServer),
     ("weather",   WeatherMCPServer),
+    ("twilio",    TwilioMCPServer),
     ("myserver",  MyNewServer),   # ← add this
 ]
 ```
@@ -149,8 +207,11 @@ Then redeploy with `fly deploy`. No other files need to change.
 ### Running locally
 
 ```bash
-OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.combined --port 8000
-# → starts all four servers; prints one shared API key
+OPENWEATHER_API_KEY=<key> \
+TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_FROM_NUMBER=<number> \
+SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
+  uv run -m mcp_examples.combined --port 8000
+# → starts all five servers; prints one shared API key
 ```
 
 ---
@@ -219,6 +280,7 @@ mcp-example/
 │   ├── contact_database.py    # ContactDatabaseManager (mock contacts)
 │   ├── contacts.py            # ContactMCPServer + module-level mcp instance
 │   ├── server.py              # GreetMCPServer + module-level mcp instance
+│   ├── twilio_server.py       # TwilioMCPServer + module-level mcp instance
 │   ├── weather.py             # WeatherMCPServer + module-level mcp instance
 │   ├── wikipedia.py           # WikipediaMCPServer + module-level mcp instance
 │   ├── client.py              # MCPClient (remote tool invocation)

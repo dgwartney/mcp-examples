@@ -17,6 +17,7 @@ __all__ = [
     "GreetMCPServer",
     "MCPClient",
     "MCPClientApp",
+    "TwilioMCPServer",
     "WeatherMCPServer",
     "WikipediaMCPServer",
 ]
@@ -30,6 +31,7 @@ _LAZY_IMPORTS: dict[str, str] = {
     "GreetMCPServer": "mcp_examples.server",
     "MCPClient": "mcp_examples.client",
     "MCPClientApp": "mcp_examples.cli",
+    "TwilioMCPServer": "mcp_examples.twilio_server",
     "WeatherMCPServer": "mcp_examples.weather",
     "WikipediaMCPServer": "mcp_examples.wikipedia",
 }

@@ -13,6 +13,7 @@ A production-ready implementation of Model Context Protocol (MCP) servers and cl
 | **Greet** | `mcp_examples/server.py` | `greet(name)` |
 | **Contact** | `mcp_examples/contacts.py` | `search_by_email`, `search_by_last_name`, `search_by_account_id`, `authenticate` |
 | **Wikipedia** | `mcp_examples/wikipedia.py` | `search_pages`, `search_titles`, `get_page_summary`, `get_related_pages` |
+| **Combined** | `mcp_examples/combined.py` | All of the above, each at its own path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`) |
 
 All servers use API key authentication over HTTP and run locally via stdio. See [docs/servers.md](docs/servers.md) for full details, architecture, and project structure.
 
@@ -26,15 +27,19 @@ git clone https://github.com/dgwartney/mcp-example.git
 cd mcp-example
 uv sync
 
-# 2. Start the greet server (HTTP transport)
-uv run -m mcp_examples.server --transport streamable-http --port 8000
+# 2. Start all servers combined (HTTP transport, port 8000)
+uv run -m mcp_examples.combined --port 8000
 # → prints: Generated default API key: <YOUR_KEY>
+# → /greet/mcp, /contacts/mcp, /wikipedia/mcp all live
 
-# 3. Test it
-uv run -m mcp_examples.cli --api-key YOUR_KEY --name Alice
+# 3. Test the greet server
+uv run -m mcp_examples.cli --api-key YOUR_KEY --url http://localhost:8000/greet/mcp --name Alice
 # → Hello, Alice!
 
-# 4. Or open the interactive browser UI (no API key needed)
+# 4. Or run a single server on its own
+uv run -m mcp_examples.server --transport streamable-http --port 8000
+
+# 5. Or open the interactive browser UI (no API key needed)
 uv run fastmcp dev mcp_examples/server.py
 ```
 

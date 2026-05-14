@@ -80,6 +80,48 @@ MCP_DB_PATH=/var/data/keys.db uv run -m mcp_examples.wikipedia
 
 ---
 
+## Combined Server (`mcp_examples/combined.py`) {#combined-server}
+
+Mounts all three servers into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
+
+### URL paths
+
+| Path | Server |
+|------|--------|
+| `/greet/mcp` | Greet server |
+| `/contacts/mcp` | Contact server |
+| `/wikipedia/mcp` | Wikipedia server |
+
+### How it works
+
+`combined.py` maintains a central registry of `(url_prefix, ServerClass)` pairs. At startup it instantiates each server, creates a Starlette sub-app via `mcp.http_app()` with that server's `ApiKeyMiddleware`, and mounts it at the corresponding path. A custom lifespan explicitly composes all sub-app lifespans so FastMCP's background workers start and stop correctly (Starlette's `Mount` does not propagate sub-app lifespans automatically).
+
+All servers share the same `api_keys.db` via the `MCP_DB_PATH` environment variable, so one API key authenticates to every path.
+
+### Adding a new server
+
+Open `mcp_examples/combined.py` and append one line to `SERVER_REGISTRY`:
+
+```python
+SERVER_REGISTRY: list[tuple[str, type]] = [
+    ("greet",     GreetMCPServer),
+    ("contacts",  ContactMCPServer),
+    ("wikipedia", WikipediaMCPServer),
+    ("myserver",  MyNewServer),   # ← add this
+]
+```
+
+Then redeploy with `fly deploy`. No other files need to change.
+
+### Running locally
+
+```bash
+uv run -m mcp_examples.combined --port 8000
+# → starts all three servers; prints one shared API key
+```
+
+---
+
 ## Architecture
 
 ```

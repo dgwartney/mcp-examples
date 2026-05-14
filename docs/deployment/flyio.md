@@ -100,19 +100,23 @@ uv run -m mcp_examples.cli \
   --url https://mcp-example.fly.dev/mcp
 ```
 
-### Which server is deployed
+### Which servers are deployed
 
-The `Dockerfile` in this repo runs the **Contact server** by default:
+The `Dockerfile` runs the **combined server**, which mounts all three MCP servers at separate URL paths:
 
-```dockerfile
-CMD ["uv", "run", "-m", "mcp_examples.contacts", "--transport", "streamable-http", "--port", "8000", "--host", "0.0.0.0"]
-```
+| Path | Server |
+|------|--------|
+| `https://mcp-example.fly.dev/greet/mcp` | Greet server |
+| `https://mcp-example.fly.dev/contacts/mcp` | Contact server |
+| `https://mcp-example.fly.dev/wikipedia/mcp` | Wikipedia server |
 
-To switch to the Greet server, change that line and redeploy with `fly deploy`.
+One API key (stored in the shared `/data/api_keys.db` volume) authenticates to all three paths.
 
-### Verify the contact server is running
+To add a new server to the deployment, append one entry to `SERVER_REGISTRY` in `mcp_examples/combined.py` and run `fly deploy`. See [docs/servers.md](../servers.md#combined-server) for details.
 
-After deploying, confirm the contact server is live and responding:
+### Verify all servers are running
+
+After deploying, confirm each server is live:
 
 ```bash
 # 1. Wake the machine if it has auto-stopped (see Stopping and starting below)
@@ -121,15 +125,27 @@ fly machine start
 # 2. Check machine state — look for 'started' in the output
 fly status
 
-# 3. Test a contact tool call (replace YOUR_API_KEY with your actual key)
-curl -s -X POST https://mcp-example.fly.dev/mcp \
+# 3. Test each server (replace YOUR_API_KEY with your actual key)
+curl -s -X POST https://mcp-example.fly.dev/greet/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+
+curl -s -X POST https://mcp-example.fly.dev/contacts/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+
+curl -s -X POST https://mcp-example.fly.dev/wikipedia/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
 ```
 
-A successful response returns a JSON object containing `"name":"ContactMCP"` in the `serverInfo` field, confirming the contact server is running.
+A successful response for each includes the server name in the `serverInfo` field: `"name":"GreetMCP"`, `"name":"ContactMCP"`, or `"name":"WikipediaMCP"`.
 
 ---
 

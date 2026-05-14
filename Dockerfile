@@ -21,4 +21,4 @@ RUN mkdir -p /data
 
 EXPOSE 8000
 
-CMD ["uv", "run", "-m", "mcp_examples.contacts", "--transport", "streamable-http", "--port", "8000", "--host", "0.0.0.0"]
+CMD ["uv", "run", "-m", "mcp_examples.combined", "--port", "8000", "--host", "0.0.0.0"]

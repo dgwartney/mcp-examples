@@ -173,3 +173,68 @@ curl -s -X POST http://localhost:8000/mcp \
     }
   }'
 ```
+
+---
+
+### Weather Server
+
+Start the server first:
+```bash
+OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather --transport streamable-http --port 8000
+```
+
+Run Steps 1 and 2 from the Greet Server section above (same commands). Then call any weather tool:
+
+**Get current weather:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "get_current_weather",
+      "arguments": {"location": "London", "units": "metric"}
+    }
+  }'
+```
+
+**Get 5-day forecast:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "get_forecast",
+      "arguments": {"location": "Tokyo,JP", "days": 5, "units": "metric"}
+    }
+  }'
+```
+
+**Get air quality:**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "get_air_quality",
+      "arguments": {"location": "Beijing"}
+    }
+  }'
+```

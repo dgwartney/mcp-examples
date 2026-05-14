@@ -6,6 +6,8 @@ primary_region = 'ord'
 [env]
   MCP_DB_PATH = '/data/api_keys.db'
   CONTACTS_DB_PATH = '/data/contacts.db'
+  # Set via: fly secrets set OPENWEATHER_API_KEY=<your_key>
+  # Get a free key at https://openweathermap.org/api
 
 [http_service]
   internal_port = 8000

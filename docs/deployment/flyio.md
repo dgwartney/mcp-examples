@@ -102,15 +102,22 @@ uv run -m mcp_examples.cli \
 
 ### Which servers are deployed
 
-The `Dockerfile` runs the **combined server**, which mounts all three MCP servers at separate URL paths:
+The `Dockerfile` runs the **combined server**, which mounts all four MCP servers at separate URL paths:
 
 | Path | Server |
 |------|--------|
 | `https://mcp-example.fly.dev/greet/mcp` | Greet server |
 | `https://mcp-example.fly.dev/contacts/mcp` | Contact server |
 | `https://mcp-example.fly.dev/wikipedia/mcp` | Wikipedia server |
+| `https://mcp-example.fly.dev/weather/mcp` | Weather server |
 
-One API key (stored in the shared `/data/api_keys.db` volume) authenticates to all three paths.
+One API key (stored in the shared `/data/api_keys.db` volume) authenticates to all four paths.
+
+> **Weather server requires an API key from OpenWeatherMap.** Before deploying, set it as a Fly.io secret (not in `fly.toml`):
+> ```bash
+> fly secrets set OPENWEATHER_API_KEY=<your_key>
+> ```
+> Get a free key at https://openweathermap.org/api.
 
 To add a new server to the deployment, append one entry to `SERVER_REGISTRY` in `mcp_examples/combined.py` and run `fly deploy`. See [docs/servers.md](../servers.md#combined-server) for details.
 
@@ -143,9 +150,15 @@ curl -s -X POST https://mcp-example.fly.dev/wikipedia/mcp \
   -H "Accept: application/json, text/event-stream" \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+
+curl -s -X POST https://mcp-example.fly.dev/weather/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
 ```
 
-A successful response for each includes the server name in the `serverInfo` field: `"name":"GreetMCP"`, `"name":"ContactMCP"`, or `"name":"WikipediaMCP"`.
+A successful response for each includes the server name in the `serverInfo` field: `"name":"GreetMCP"`, `"name":"ContactMCP"`, `"name":"WikipediaMCP"`, or `"name":"WeatherMCP"`.
 
 ---
 

@@ -14,7 +14,12 @@ uv run -m mcp_examples.server
 uv run -m mcp_examples.contacts
 ```
 
-> stdio transport does not require an API key and is not accessible remotely.
+**Weather server:**
+```bash
+OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather
+```
+
+> stdio transport does not require an API key and is not accessible remotely. The Weather server always requires `OPENWEATHER_API_KEY` regardless of transport.
 
 ## Option 2 — HTTP transport (authenticated remote access)
 
@@ -28,6 +33,11 @@ uv run -m mcp_examples.server --transport streamable-http --port 8000
 **Contact server:**
 ```bash
 uv run -m mcp_examples.contacts --transport streamable-http --port 8000
+```
+
+**Weather server:**
+```bash
+OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather --transport streamable-http --port 8000
 ```
 
 The server endpoint is `http://localhost:8000/mcp`.

@@ -48,6 +48,37 @@ A Salesforce-style CRM server backed by a SQLite contacts database, auto-seeded 
 
 Each record includes fields: `Id`, `FirstName`, `LastName`, `Email`, `Phone`, `MobilePhone`, `Title`, `Department`, `AccountId`, `AccountName`, `MailingStreet`, `MailingCity`, `MailingState`, `MailingPostalCode`, `MailingCountry`, and more.
 
+## Weather Server (`mcp_examples/weather.py`)
+
+Queries the [OpenWeatherMap API](https://openweathermap.org/api) to provide current conditions, multi-day forecasts, and air quality data. Requires a free OpenWeatherMap API key — sign up at https://openweathermap.org/api and set the `OPENWEATHER_API_KEY` environment variable before starting.
+
+- **WeatherMCPServer** (`weather.py`): Subclass of `AuthenticatedMCPServer` with an `httpx.Client` for outbound OpenWeatherMap requests
+- **API key auth**: Same middleware-based authentication as the other servers
+- **Geocoding**: `get_air_quality` automatically geocodes the city name to lat/lon before fetching air data
+
+### Tools
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `get_current_weather` | `location: str, units: str = "metric"` | Current conditions: temperature, humidity, pressure, wind, visibility, sunrise/sunset. `units`: `metric` (°C), `imperial` (°F), `standard` (K) |
+| `get_forecast` | `location: str, days: int = 5, units: str = "metric"` | Daily forecast summaries for up to 5 days: min/max temp, description, humidity, wind (days clamped 1–5) |
+| `get_air_quality` | `location: str` | Current AQI (1=Good … 5=Very Poor) and pollutant levels: CO, NO₂, O₃, PM2.5, PM10 |
+
+### Running
+
+```bash
+# stdio transport (default)
+OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather
+
+# HTTP transport
+OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather --transport streamable-http --port 8001
+
+# Custom database path
+MCP_DB_PATH=/var/data/keys.db OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather
+```
+
+---
+
 ## Wikipedia Server (`mcp_examples/wikipedia.py`)
 
 Queries the Wikipedia REST API and MediaWiki Action API to search and retrieve article content. Demonstrates how to build a tool-rich MCP server that calls an external HTTP API.
@@ -82,7 +113,7 @@ MCP_DB_PATH=/var/data/keys.db uv run -m mcp_examples.wikipedia
 
 ## Combined Server (`mcp_examples/combined.py`) {#combined-server}
 
-Mounts all three servers into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
+Mounts all four servers into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
 
 ### URL paths
 
@@ -91,6 +122,7 @@ Mounts all three servers into a single process, each at its own URL path. This i
 | `/greet/mcp` | Greet server |
 | `/contacts/mcp` | Contact server |
 | `/wikipedia/mcp` | Wikipedia server |
+| `/weather/mcp` | Weather server |
 
 ### How it works
 
@@ -107,6 +139,7 @@ SERVER_REGISTRY: list[tuple[str, type]] = [
     ("greet",     GreetMCPServer),
     ("contacts",  ContactMCPServer),
     ("wikipedia", WikipediaMCPServer),
+    ("weather",   WeatherMCPServer),
     ("myserver",  MyNewServer),   # ← add this
 ]
 ```
@@ -116,8 +149,8 @@ Then redeploy with `fly deploy`. No other files need to change.
 ### Running locally
 
 ```bash
-uv run -m mcp_examples.combined --port 8000
-# → starts all three servers; prints one shared API key
+OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.combined --port 8000
+# → starts all four servers; prints one shared API key
 ```
 
 ---
@@ -186,6 +219,7 @@ mcp-example/
 │   ├── contact_database.py    # ContactDatabaseManager (mock contacts)
 │   ├── contacts.py            # ContactMCPServer + module-level mcp instance
 │   ├── server.py              # GreetMCPServer + module-level mcp instance
+│   ├── weather.py             # WeatherMCPServer + module-level mcp instance
 │   ├── wikipedia.py           # WikipediaMCPServer + module-level mcp instance
 │   ├── client.py              # MCPClient (remote tool invocation)
 │   └── cli.py                 # MCPClientApp CLI + main() entry point
@@ -197,7 +231,8 @@ mcp-example/
 │   ├── test_middleware.py     # ApiKeyMiddleware tests
 │   ├── test_server.py        # GreetMCPServer + integration tests
 │   ├── test_client.py        # MCPClient + edge case tests
-│   └── test_cli.py           # MCPClientApp + integration tests
+│   ├── test_cli.py           # MCPClientApp + integration tests
+│   └── test_weather.py       # WeatherMCPServer tests
 ├── auth.py                   # Standalone middleware example (reference)
 ├── api_keys.db               # SQLite database (generated on first run)
 ├── Dockerfile                # Container image for Fly.io and VPS deployment

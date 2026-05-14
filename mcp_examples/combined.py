@@ -7,11 +7,13 @@ Endpoints (when running on port 8000):
     /greet/mcp      → Greet server
     /contacts/mcp   → Contact server
     /wikipedia/mcp  → Wikipedia server
+    /weather/mcp    → Weather server
 
 Run locally:
-    uv run -m mcp_examples.combined --port 8000
+    OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.combined --port 8000
 
 Deploy to Fly.io:
+    fly secrets set OPENWEATHER_API_KEY=<key>
     fly deploy
 """
 
@@ -24,6 +26,7 @@ from starlette.routing import Mount
 
 from mcp_examples.contacts import ContactMCPServer
 from mcp_examples.server import GreetMCPServer
+from mcp_examples.weather import WeatherMCPServer
 from mcp_examples.wikipedia import WikipediaMCPServer
 
 # Central registry: (url_prefix, ServerClass)
@@ -32,6 +35,7 @@ SERVER_REGISTRY: list[tuple[str, type]] = [
     ("greet", GreetMCPServer),
     ("contacts", ContactMCPServer),
     ("wikipedia", WikipediaMCPServer),
+    ("weather", WeatherMCPServer),
 ]
 
 

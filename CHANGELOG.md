@@ -9,18 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **MCP Server** (`my_server.py`)
+- **MCP Server** (`mcp_examples/server.py`)
   - FastMCP server implementation with SQLite-backed API key authentication
   - `DatabaseManager` class for API key storage and validation
   - `ApiKeyMiddleware` for request authentication with case-insensitive header handling (RFC 7230 compliant)
-  - `MCPServer` class encapsulating server setup and tool registration
+  - `GreetMCPServer` class encapsulating server setup and tool registration
   - Cryptographically secure API key generation using `secrets.token_urlsafe()`
   - Automatic database initialization with default key generation on first run
   - Support for both stdio and HTTP transports
   - Parameterized SQL queries for SQL injection protection
   - `greet` tool for demonstration purposes
 
-- **MCP Client** (`my_client.py`)
+- **MCP Client** (`mcp_examples/client.py`)
   - FastMCP client implementation with API key authentication
   - `MCPClient` class for connecting to remote MCP servers
   - `MCPClientApp` class providing CLI interface with argparse

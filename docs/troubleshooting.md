@@ -24,7 +24,7 @@
 
 **Solution:** Already handled in `mcp_examples/server.py` with:
 ```python
-server = MCPServer()
+server = GreetMCPServer()
 mcp = server.mcp
 ```
 

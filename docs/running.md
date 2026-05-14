@@ -19,7 +19,19 @@ uv run -m mcp_examples.contacts
 OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather
 ```
 
-> stdio transport does not require an API key and is not accessible remotely. The Weather server always requires `OPENWEATHER_API_KEY` regardless of transport.
+**Wikipedia server:**
+```bash
+uv run -m mcp_examples.wikipedia
+```
+
+**Twilio server:**
+```bash
+TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_FROM_NUMBER=<number> \
+SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
+  uv run -m mcp_examples.twilio_server
+```
+
+> stdio transport does not require an API key and is not accessible remotely. Servers that call external APIs (Weather, Twilio) always require their respective credentials regardless of transport.
 
 ## Option 2 — HTTP transport (authenticated remote access)
 
@@ -38,6 +50,18 @@ uv run -m mcp_examples.contacts --transport streamable-http --port 8000
 **Weather server:**
 ```bash
 OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather --transport streamable-http --port 8000
+```
+
+**Wikipedia server:**
+```bash
+uv run -m mcp_examples.wikipedia --transport streamable-http --port 8000
+```
+
+**Twilio server:**
+```bash
+TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_FROM_NUMBER=<number> \
+SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
+  uv run -m mcp_examples.twilio_server --transport streamable-http --port 8000
 ```
 
 The server endpoint is `http://localhost:8000/mcp`.
@@ -69,6 +93,15 @@ uv run fastmcp inspect mcp_examples/server.py
 
 # Contact server
 uv run fastmcp inspect mcp_examples/contacts.py
+
+# Weather server
+uv run fastmcp inspect mcp_examples/weather.py
+
+# Wikipedia server
+uv run fastmcp inspect mcp_examples/wikipedia.py
+
+# Twilio server
+uv run fastmcp inspect mcp_examples/twilio_server.py
 ```
 
 ### Interactive testing with MCP Inspector
@@ -81,6 +114,15 @@ uv run fastmcp dev mcp_examples/server.py
 
 # Contact server
 uv run fastmcp dev mcp_examples/contacts.py
+
+# Weather server
+uv run fastmcp dev mcp_examples/weather.py
+
+# Wikipedia server
+uv run fastmcp dev mcp_examples/wikipedia.py
+
+# Twilio server
+uv run fastmcp dev mcp_examples/twilio_server.py
 ```
 
 The Inspector UI opens at `http://localhost:5173` by default.

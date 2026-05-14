@@ -1,6 +1,6 @@
 # Servers
 
-This project provides three MCP servers built on a shared authenticated base class.
+This project provides five MCP servers built on a shared authenticated base class.
 
 ## Greet Server (`mcp_examples/server.py`)
 

@@ -14,7 +14,8 @@ A production-ready implementation of Model Context Protocol (MCP) servers and cl
 | **Contact** | `mcp_examples/contacts.py` | `search_by_email`, `search_by_last_name`, `search_by_account_id`, `authenticate` |
 | **Wikipedia** | `mcp_examples/wikipedia.py` | `search_pages`, `search_titles`, `get_page_summary`, `get_related_pages` |
 | **Weather** | `mcp_examples/weather.py` | `get_current_weather`, `get_forecast`, `get_air_quality` |
-| **Combined** | `mcp_examples/combined.py` | All of the above, each at its own path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`) |
+| **Twilio** | `mcp_examples/twilio_server.py` | `send_sms`, `send_email` |
+| **Combined** | `mcp_examples/combined.py` | All of the above, each at its own path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`, `/twilio/mcp`) |
 
 All servers use API key authentication over HTTP and run locally via stdio. See [docs/servers.md](docs/servers.md) for full details, architecture, and project structure.
 
@@ -29,9 +30,11 @@ cd mcp-example
 uv sync
 
 # 2. Start all servers combined (HTTP transport, port 8000)
-OPENWEATHER_API_KEY=<your_key> uv run -m mcp_examples.combined --port 8000
+OPENWEATHER_API_KEY=<your_key> TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> \
+TWILIO_FROM_NUMBER=<number> SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
+  uv run -m mcp_examples.combined --port 8000
 # → prints: Generated default API key: <YOUR_KEY>
-# → /greet/mcp, /contacts/mcp, /wikipedia/mcp, /weather/mcp all live
+# → /greet/mcp, /contacts/mcp, /wikipedia/mcp, /weather/mcp, /twilio/mcp all live
 
 # 3. Test the greet server
 uv run -m mcp_examples.cli --api-key YOUR_KEY --url http://localhost:8000/greet/mcp --name Alice

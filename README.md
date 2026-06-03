@@ -82,12 +82,12 @@ uv run fastmcp dev mcp_examples/server.py
 
 | Platform | Cost | SQLite persists | Always on |
 |----------|------|-----------------|-----------|
-| [Local](docs/deployment/local.md) | Free | ✅ | Requires laptop |
-| [ngrok](docs/deployment/ngrok.md) | Free / $10/mo fixed URL | ✅ | Requires laptop |
-| [Fly.io](docs/deployment/flyio.md) | Free tier | ✅ | ✅ |
-| [Render](docs/deployment/render.md) | Free + $1/mo disk | ✅ | ❌ (sleeps) |
-| [Railway](docs/deployment/railway.md) | $5 credit/mo | ❌ | ✅ |
-| [Docker + VPS](docs/deployment/docker.md) | ~$4/mo | ✅ | ✅ |
+| [Local](docs/deployment/local.md) | Free | Yes | Requires laptop |
+| [ngrok](docs/deployment/ngrok.md) | Free / $10/mo fixed URL | Yes | Requires laptop |
+| [Fly.io](docs/deployment/flyio.md) | Free tier | Yes | Yes |
+| [Render](docs/deployment/render.md) | Free + $1/mo disk | Yes | No (sleeps) |
+| [Railway](docs/deployment/railway.md) | $5 credit/mo | No | Yes |
+| [Docker + VPS](docs/deployment/docker.md) | ~$4/mo | Yes | Yes |
 
 See [docs/deployment/index.md](docs/deployment/index.md) for a full comparison and step-by-step guides for each platform.
 

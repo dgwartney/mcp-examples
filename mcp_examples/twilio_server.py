@@ -6,12 +6,12 @@ Exposes two tools:
 - send_email: Send a plain-text or HTML email via the SendGrid v3 API.
 
 Required environment variables:
-    TWILIO_ACCOUNT_SID   — Twilio account SID (starts with "AC")
-    TWILIO_AUTH_TOKEN    — Twilio auth token
-    TWILIO_FROM_NUMBER   — E.164 phone number to send from (e.g. +15551234567)
-    SENDGRID_API_KEY     — SendGrid API key (starts with "SG.")
-    SENDGRID_FROM_EMAIL  — Verified sender email address
-    SENDGRID_FROM_NAME   — (optional) Display name for the sender
+    TWILIO_ACCOUNT_SID          — Twilio account SID (starts with "AC")
+    TWILIO_AUTH_TOKEN           — Twilio auth token
+    TWILIO_MESSAGING_SERVICE_SID — Twilio Messaging Service SID (starts with "MG")
+    SENDGRID_API_KEY            — SendGrid API key (starts with "SG.")
+    SENDGRID_FROM_EMAIL         — Verified sender email address
+    SENDGRID_FROM_NAME          — (optional) Display name for the sender
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -47,7 +47,7 @@ class TwilioMCPServer(AuthenticatedMCPServer):
     def __init__(self, db_path: Optional[str] = None):
         self._twilio_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
         self._twilio_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
-        self._twilio_from = os.environ.get("TWILIO_FROM_NUMBER", "")
+        self._twilio_messaging_service_sid = os.environ.get("TWILIO_MESSAGING_SERVICE_SID", "")
         self._sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
         self._sendgrid_from_email = os.environ.get("SENDGRID_FROM_EMAIL", "")
         self._sendgrid_from_name = os.environ.get("SENDGRID_FROM_NAME", "")
@@ -61,38 +61,28 @@ class TwilioMCPServer(AuthenticatedMCPServer):
                 "Send an SMS message via Twilio. "
                 "to: destination phone number in E.164 format (e.g. +15551234567). "
                 "body: text content of the message (max 1600 characters). "
-                "from_number: (optional) override the default TWILIO_FROM_NUMBER. "
                 "Returns the Twilio message SID and delivery status on success."
             )
         )
         def send_sms(
             to: str,
             body: str,
-            from_number: Optional[str] = None,
         ) -> dict:
             """
-            Send an SMS via the Twilio Messages REST API.
+            Send an SMS via the Twilio Messages REST API using a Messaging Service.
 
             Args:
                 to: Destination phone number in E.164 format.
                 body: SMS body text (max 1600 characters).
-                from_number: Sending number in E.164 format; falls back to
-                             TWILIO_FROM_NUMBER if omitted.
 
             Returns:
-                Dict with keys: sid, status, to, from, body, price, price_unit.
+                Dict with keys: sid, status, to, body.
 
             Raises:
                 ToolError: If credentials are missing, the number is invalid,
                            or the Twilio API returns an error.
             """
             self._check_twilio_creds()
-            sender = from_number or self._twilio_from
-            if not sender:
-                raise ToolError(
-                    "No sending number provided. Pass from_number or set "
-                    "the TWILIO_FROM_NUMBER environment variable."
-                )
             if not to.startswith("+"):
                 raise ToolError(
                     f"Phone number '{to}' must be in E.164 format (e.g. +15551234567)."
@@ -105,7 +95,11 @@ class TwilioMCPServer(AuthenticatedMCPServer):
                 resp = self._http.post(
                     url,
                     auth=(self._twilio_sid, self._twilio_token),
-                    data={"To": to, "From": sender, "Body": body},
+                    data={
+                        "To": to,
+                        "MessagingServiceSid": self._twilio_messaging_service_sid,
+                        "Body": body,
+                    },
                 )
                 _raise_twilio_error(resp)
             except ToolError:
@@ -118,10 +112,7 @@ class TwilioMCPServer(AuthenticatedMCPServer):
                 "sid": d.get("sid"),
                 "status": d.get("status"),
                 "to": d.get("to"),
-                "from": d.get("from"),
                 "body": d.get("body"),
-                "price": d.get("price"),
-                "price_unit": d.get("price_unit"),
             }
 
         @self.mcp.tool(
@@ -229,6 +220,7 @@ class TwilioMCPServer(AuthenticatedMCPServer):
             for name, val in [
                 ("TWILIO_ACCOUNT_SID", self._twilio_sid),
                 ("TWILIO_AUTH_TOKEN", self._twilio_token),
+                ("TWILIO_MESSAGING_SERVICE_SID", self._twilio_messaging_service_sid),
             ]
             if not val
         ]

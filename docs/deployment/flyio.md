@@ -123,7 +123,7 @@ One API key (stored in the shared `/data/api_keys.db` volume) authenticates to a
 > # Twilio (https://console.twilio.com)
 > fly secrets set TWILIO_ACCOUNT_SID=<your_account_sid>
 > fly secrets set TWILIO_AUTH_TOKEN=<your_auth_token>
-> fly secrets set TWILIO_FROM_NUMBER=<your_e164_number>   # e.g. +15551234567
+> fly secrets set TWILIO_MESSAGING_SERVICE_SID=<your_messaging_service_sid>   # starts with MG
 >
 > # SendGrid (https://app.sendgrid.com/settings/api_keys)
 > fly secrets set SENDGRID_API_KEY=<your_sg_key>

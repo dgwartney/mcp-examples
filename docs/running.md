@@ -26,7 +26,7 @@ uv run -m mcp_examples.wikipedia
 
 **Twilio server:**
 ```bash
-TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_FROM_NUMBER=<number> \
+TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
   uv run -m mcp_examples.twilio_server
 ```
@@ -59,7 +59,7 @@ uv run -m mcp_examples.wikipedia --transport streamable-http --port 8000
 
 **Twilio server:**
 ```bash
-TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_FROM_NUMBER=<number> \
+TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
   uv run -m mcp_examples.twilio_server --transport streamable-http --port 8000
 ```

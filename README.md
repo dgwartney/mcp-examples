@@ -31,7 +31,7 @@ uv sync
 
 # 2. Start all servers combined (HTTP transport, port 8000)
 OPENWEATHER_API_KEY=<your_key> TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> \
-TWILIO_FROM_NUMBER=<number> SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
+TWILIO_MESSAGING_SERVICE_SID=<mg_sid> SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
   uv run -m mcp_examples.combined --port 8000
 # → prints: Generated default API key: <YOUR_KEY>
 # → /greet/mcp, /contacts/mcp, /wikipedia/mcp, /weather/mcp, /twilio/mcp all live

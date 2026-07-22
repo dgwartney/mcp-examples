@@ -136,7 +136,7 @@ Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) a
 |----------|-------------|
 | `TWILIO_ACCOUNT_SID` | Twilio account SID (starts with `AC`) |
 | `TWILIO_AUTH_TOKEN` | Twilio auth token |
-| `TWILIO_FROM_NUMBER` | Default sending number in E.164 format (e.g. `+15551234567`) |
+| `TWILIO_MESSAGING_SERVICE_SID` | Twilio Messaging Service SID (starts with `MG`) |
 | `SENDGRID_API_KEY` | SendGrid API key (starts with `SG.`) |
 | `SENDGRID_FROM_EMAIL` | Verified sender email address |
 | `SENDGRID_FROM_NAME` | *(optional)* Display name shown in the From field |
@@ -145,19 +145,19 @@ Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) a
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `send_sms` | `to: str, body: str, from_number: str = None` | Send an SMS via Twilio. `to` must be E.164 format (e.g. `+15551234567`). Returns the Twilio message `sid` and delivery `status`. |
+| `send_sms` | `to: str, body: str` | Send an SMS via Twilio using the configured Messaging Service. `to` must be E.164 format (e.g. `+15551234567`). Returns the Twilio message `sid` and delivery `status`. |
 | `send_email` | `to: str, subject: str, plain_text: str, html: str = None, to_name: str = None, from_email: str = None, from_name: str = None` | Send an email via SendGrid. If `html` is provided the message is sent as multipart/alternative so mail clients can choose the best format. Returns SendGrid `message_id`. |
 
 ### Running
 
 ```bash
 # stdio transport (default)
-TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_FROM_NUMBER=<number> \
+TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
   uv run -m mcp_examples.twilio_server
 
 # HTTP transport
-TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_FROM_NUMBER=<number> \
+TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
   uv run -m mcp_examples.twilio_server --transport streamable-http --port 8003
 
@@ -208,7 +208,7 @@ Then redeploy with `fly deploy`. No other files need to change.
 
 ```bash
 OPENWEATHER_API_KEY=<key> \
-TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_FROM_NUMBER=<number> \
+TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
   uv run -m mcp_examples.combined --port 8000
 # → starts all five servers; prints one shared API key

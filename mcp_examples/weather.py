@@ -2,17 +2,17 @@
 FastMCP Server with OpenWeatherMap weather tools.
 
 Demonstrates how to build an MCP server by subclassing
-``AuthenticatedMCPServer`` and registering tools that query the
-OpenWeatherMap One Call API 3.0.
+``AuthenticatedMCPServer`` and registering tools that query OpenWeatherMap's
+free-tier APIs: Current Weather Data, 5 Day / 3 Hour Forecast, and Air
+Pollution.
 
-To use this server you need an OpenWeatherMap API key subscribed to the
-"One Call by Call" plan (2,000 free calls/day, credit card required):
+To use this server you need a free OpenWeatherMap API key:
     1. Sign up at https://openweathermap.org/api
-    2. Subscribe to "One Call API 3.0" at https://openweathermap.org/price
-    3. Export the key before starting the server:
+    2. Export the key before starting the server:
            export OPENWEATHER_API_KEY=<your_key>
 
-Air quality uses the free Air Pollution API (no subscription needed).
+All three tools work on OpenWeatherMap's free tier — no subscription or
+credit card required.
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -50,14 +50,13 @@ class WeatherMCPServer(AuthenticatedMCPServer):
     """
     MCP server with OpenWeatherMap weather tools.
 
-    Exposes three tools backed by the OpenWeatherMap API:
-    - get_current_weather: current conditions via One Call API 3.0
-    - get_forecast: up to 8-day daily forecast via One Call API 3.0
-    - get_air_quality: current AQI and pollutant levels via Air Pollution API
+    Exposes three tools, all backed by OpenWeatherMap's free tier:
+    - get_current_weather: current conditions via the Current Weather Data API
+    - get_forecast: up to 5-day forecast via the 5 Day / 3 Hour Forecast API
+      (3-hour data points aggregated into daily summaries)
+    - get_air_quality: current AQI and pollutant levels via the Air Pollution API
 
     Requires the ``OPENWEATHER_API_KEY`` environment variable to be set.
-    get_current_weather and get_forecast require a One Call API 3.0 subscription
-    (2,000 free calls/day). get_air_quality uses the free Air Pollution API.
     """
 
     def __init__(self, db_path: Optional[str] = None, api_key: Optional[str] = None):
@@ -75,8 +74,8 @@ class WeatherMCPServer(AuthenticatedMCPServer):
         @self.mcp.tool(
             description=(
                 "Get the current weather conditions for a city or location using "
-                "One Call API 3.0. Returns temperature, humidity, wind, UV index, "
-                "visibility, and a short description. "
+                "the free Current Weather Data API. Returns temperature, humidity, "
+                "wind, visibility, and a short description. "
                 "location: city name (e.g. 'London'), city+country (e.g. 'Paris,FR'), "
                 "or city+state+country for US cities (e.g. 'San Jose,CA,US'). "
                 "units: 'metric' (Celsius), 'imperial' (Fahrenheit), 'standard' (Kelvin)."
@@ -86,9 +85,7 @@ class WeatherMCPServer(AuthenticatedMCPServer):
             """
             Retrieve current weather conditions for a location.
 
-            Geocodes the location, then calls the One Call API 3.0 for current
-            conditions. Today's min/max temperatures come from the daily forecast
-            included in the same response.
+            Geocodes the location, then calls the free Current Weather Data API.
 
             Args:
                 location: City name, optionally with country code
@@ -99,7 +96,7 @@ class WeatherMCPServer(AuthenticatedMCPServer):
             Returns:
                 Dict with keys: location, country, temperature, feels_like,
                 temp_min, temp_max, humidity, pressure, wind_speed,
-                wind_direction, description, visibility, uvi, sunrise, sunset.
+                wind_direction, description, visibility, sunrise, sunset.
 
             Raises:
                 ToolError: If the API key is missing, the location is not found,
@@ -113,11 +110,10 @@ class WeatherMCPServer(AuthenticatedMCPServer):
             lat, lon, name, country = self._geocode(location)
             try:
                 resp = self._http.get(
-                    f"{_BASE_URL}/data/3.0/onecall",
+                    f"{_BASE_URL}/data/2.5/weather",
                     params={
                         "lat": lat,
                         "lon": lon,
-                        "exclude": "minutely,hourly,alerts",
                         "units": units,
                         "appid": self._api_key,
                     },
@@ -138,56 +134,61 @@ class WeatherMCPServer(AuthenticatedMCPServer):
                 raise ToolError(f"Weather request error: {exc}") from exc
 
             d = resp.json()
-            current = d.get("current", {})
-            daily = d.get("daily", [])
-            today_temp = (daily[0].get("temp") or {}) if daily else {}
-            weather_list = current.get("weather", [{}])
+            main = d.get("main", {})
+            wind = d.get("wind", {})
+            sys_info = d.get("sys", {})
+            weather_list = d.get("weather", [{}])
             return {
                 "location": name,
                 "country": country,
-                "temperature": current.get("temp"),
-                "feels_like": current.get("feels_like"),
-                "temp_min": today_temp.get("min"),
-                "temp_max": today_temp.get("max"),
-                "humidity": current.get("humidity"),
-                "pressure": current.get("pressure"),
-                "wind_speed": current.get("wind_speed"),
-                "wind_direction": current.get("wind_deg"),
+                "temperature": main.get("temp"),
+                "feels_like": main.get("feels_like"),
+                "temp_min": main.get("temp_min"),
+                "temp_max": main.get("temp_max"),
+                "humidity": main.get("humidity"),
+                "pressure": main.get("pressure"),
+                "wind_speed": wind.get("speed"),
+                "wind_direction": wind.get("deg"),
                 "description": weather_list[0].get("description", "") if weather_list else "",
-                "visibility": current.get("visibility"),
-                "uvi": current.get("uvi"),
-                "sunrise": _fmt_utc(current.get("sunrise")),
-                "sunset": _fmt_utc(current.get("sunset")),
+                "visibility": d.get("visibility"),
+                "sunrise": _fmt_utc(sys_info.get("sunrise")),
+                "sunset": _fmt_utc(sys_info.get("sunset")),
             }
 
         @self.mcp.tool(
             description=(
                 "Get a multi-day weather forecast for a city or location using "
-                "One Call API 3.0. Returns daily summaries with min/max temperature, "
-                "description, humidity, wind, and a plain-English summary. "
+                "the free 5 Day / 3 Hour Forecast API. Returns daily summaries "
+                "with min/max temperature, description, humidity, and wind, "
+                "aggregated from 3-hour interval data. "
                 "location: city name (e.g. 'London'), city+country (e.g. 'Tokyo,JP'), "
                 "or city+state+country for US cities (e.g. 'San Jose,CA,US'). "
-                "days: number of days to return (1–8, default 7). "
+                "days: number of days to return (1–5, default 5). "
                 "units: 'metric' (Celsius), 'imperial' (Fahrenheit), 'standard' (Kelvin)."
             )
         )
-        def get_forecast(location: str, days: int = 7, units: str = "metric") -> list[dict]:
+        def get_forecast(location: str, days: int = 5, units: str = "metric") -> list[dict]:
             """
             Retrieve a multi-day weather forecast for a location.
 
-            Uses the One Call API 3.0 daily forecast, which provides up to 8 days
-            (today + 7). Each entry is a true daily aggregate, not an interval average.
+            Uses the free 5 Day / 3 Hour Forecast API, which returns 3-hour
+            interval data points (up to 40, covering 5 days). Entries are grouped
+            by UTC calendar date and aggregated into daily summaries: temp_min/max
+            are the min/max across that day's data points, and description/humidity/
+            wind_speed are taken from the data point closest to midday UTC — a
+            simplification, since this endpoint (unlike One Call) has no true
+            daily-aggregate field.
 
             Args:
                 location: City name, optionally with country code
                           (e.g. 'London', 'Tokyo,JP').
-                days: Number of days to return (1–8, default 7).
+                days: Number of days to return (1–5, default 5).
                 units: Unit system — 'metric', 'imperial', or 'standard'.
                        Defaults to 'metric'.
 
             Returns:
                 List of dicts with keys: date, temp_min, temp_max, description,
-                humidity, wind_speed, summary.
+                humidity, wind_speed.
 
             Raises:
                 ToolError: If the API key is missing, the location is not found,
@@ -198,15 +199,14 @@ class WeatherMCPServer(AuthenticatedMCPServer):
                 raise ToolError(
                     f"Invalid units '{units}'. Must be one of: metric, imperial, standard."
                 )
-            days = max(1, min(days, 8))
+            days = max(1, min(days, 5))
             lat, lon, _name, _country = self._geocode(location)
             try:
                 resp = self._http.get(
-                    f"{_BASE_URL}/data/3.0/onecall",
+                    f"{_BASE_URL}/data/2.5/forecast",
                     params={
                         "lat": lat,
                         "lon": lon,
-                        "exclude": "current,minutely,hourly,alerts",
                         "units": units,
                         "appid": self._api_key,
                     },
@@ -226,19 +226,42 @@ class WeatherMCPServer(AuthenticatedMCPServer):
             except httpx.RequestError as exc:
                 raise ToolError(f"Forecast request error: {exc}") from exc
 
-            daily = resp.json().get("daily", [])[:days]
-            return [
-                {
-                    "date": _fmt_date(d.get("dt")),
-                    "temp_min": (d.get("temp") or {}).get("min"),
-                    "temp_max": (d.get("temp") or {}).get("max"),
-                    "description": (d.get("weather") or [{}])[0].get("description", ""),
-                    "humidity": d.get("humidity"),
-                    "wind_speed": d.get("wind_speed"),
-                    "summary": d.get("summary", ""),
-                }
-                for d in daily
-            ]
+            entries = resp.json().get("list", [])
+            by_date: dict = {}
+            for entry in entries:
+                dt = entry.get("dt")
+                if dt is None:
+                    continue
+                date_key = datetime.fromtimestamp(dt, tz=timezone.utc).date()
+                by_date.setdefault(date_key, []).append(entry)
+
+            results = []
+            for date_key in sorted(by_date)[:days]:
+                day_entries = by_date[date_key]
+                temp_mins = [
+                    (e.get("main") or {}).get("temp_min") for e in day_entries
+                    if (e.get("main") or {}).get("temp_min") is not None
+                ]
+                temp_maxs = [
+                    (e.get("main") or {}).get("temp_max") for e in day_entries
+                    if (e.get("main") or {}).get("temp_max") is not None
+                ]
+                midday_entry = min(
+                    day_entries,
+                    key=lambda e: abs(
+                        datetime.fromtimestamp(e["dt"], tz=timezone.utc).hour - 12
+                    ),
+                )
+                weather_list = midday_entry.get("weather") or [{}]
+                results.append({
+                    "date": _fmt_date(midday_entry.get("dt")),
+                    "temp_min": min(temp_mins) if temp_mins else None,
+                    "temp_max": max(temp_maxs) if temp_maxs else None,
+                    "description": weather_list[0].get("description", "") if weather_list else "",
+                    "humidity": (midday_entry.get("main") or {}).get("humidity"),
+                    "wind_speed": (midday_entry.get("wind") or {}).get("speed"),
+                })
+            return results
 
         @self.mcp.tool(
             description=(
@@ -304,8 +327,8 @@ class WeatherMCPServer(AuthenticatedMCPServer):
         if not self._api_key:
             raise ToolError(
                 "OpenWeatherMap API key is not configured. "
-                "Sign up at https://openweathermap.org/api and subscribe to "
-                "One Call API 3.0, then set the OPENWEATHER_API_KEY environment variable."
+                "Sign up at https://openweathermap.org/api, then set the "
+                "OPENWEATHER_API_KEY environment variable."
             )
 
     def _geocode(self, location: str) -> tuple[float, float, str, str]:

@@ -146,32 +146,19 @@ class TestWeatherMCPServerInit:
 
 
 # ---------------------------------------------------------------------------
-# get_current_weather — One Call API 3.0
+# get_current_weather — Current Weather Data API (free tier)
 # ---------------------------------------------------------------------------
 
-_ONE_CALL_CURRENT = {
-    "lat": 51.51,
-    "lon": -0.13,
-    "timezone": "Europe/London",
-    "current": {
-        "dt": 1700000000,
-        "sunrise": 1700000000,
-        "sunset": 1700040000,
-        "temp": 10.5,
-        "feels_like": 8.0,
-        "pressure": 1013,
-        "humidity": 80,
-        "visibility": 10000,
-        "wind_speed": 5.5,
-        "wind_deg": 270,
-        "uvi": 0.5,
-        "weather": [{"description": "overcast clouds"}],
+_CURRENT_WEATHER_2_5 = {
+    "main": {
+        "temp": 10.5, "feels_like": 8.0, "temp_min": 9.0, "temp_max": 12.0,
+        "pressure": 1013, "humidity": 80,
     },
-    "daily": [{
-        "dt": 1700000000,
-        "temp": {"day": 10.5, "min": 9.0, "max": 12.0},
-        "weather": [{"description": "overcast clouds"}],
-    }],
+    "visibility": 10000,
+    "wind": {"speed": 5.5, "deg": 270},
+    "weather": [{"description": "overcast clouds"}],
+    "sys": {"sunrise": 1700000000, "sunset": 1700040000, "country": "GB"},
+    "name": "London",
 }
 
 
@@ -179,7 +166,7 @@ class TestGetCurrentWeather:
 
     def _setup(self, server, geo=None, weather=None):
         geo_resp = _resp(geo if geo is not None else _GEO_LONDON)
-        wx_resp = _resp(weather if weather is not None else _ONE_CALL_CURRENT)
+        wx_resp = _resp(weather if weather is not None else _CURRENT_WEATHER_2_5)
         server._http.get.side_effect = [geo_resp, wx_resp]
 
     def test_returns_all_fields(self, server):
@@ -197,32 +184,24 @@ class TestGetCurrentWeather:
         assert result["wind_direction"] == 270
         assert result["description"] == "overcast clouds"
         assert result["visibility"] == 10000
-        assert result["uvi"] == 0.5
+        assert "uvi" not in result
         assert result["sunrise"].endswith("Z")
         assert result["sunset"].endswith("Z")
 
-    def test_uses_one_call_3_endpoint(self, server):
+    def test_uses_2_5_weather_endpoint(self, server):
         self._setup(server)
         _tool_fn(server, "get_current_weather")(location="London")
         url = server._http.get.call_args_list[1][0][0]
-        assert "/data/3.0/onecall" in url
+        assert "/data/2.5/weather" in url
 
-    def test_geocode_lat_lon_passed_to_onecall(self, server):
+    def test_geocode_lat_lon_passed_to_weather_call(self, server):
         self._setup(server)
         _tool_fn(server, "get_current_weather")(location="London")
         params = server._http.get.call_args_list[1][1]["params"]
         assert params["lat"] == 51.51
         assert params["lon"] == -0.13
 
-    def test_minutely_hourly_alerts_excluded(self, server):
-        self._setup(server)
-        _tool_fn(server, "get_current_weather")(location="London")
-        params = server._http.get.call_args_list[1][1]["params"]
-        assert "minutely" in params["exclude"]
-        assert "hourly" in params["exclude"]
-        assert "alerts" in params["exclude"]
-
-    def test_units_forwarded_to_onecall(self, server):
+    def test_units_forwarded(self, server):
         self._setup(server)
         _tool_fn(server, "get_current_weather")(location="London", units="imperial")
         params = server._http.get.call_args_list[1][1]["params"]
@@ -243,7 +222,7 @@ class TestGetCurrentWeather:
         with pytest.raises(ToolError, match="Location not found"):
             _tool_fn(server, "get_current_weather")(location="Neverland")
 
-    def test_401_on_onecall_raises_api_key_error(self, server):
+    def test_401_on_weather_call_raises_api_key_error(self, server):
         geo = _resp(_GEO_LONDON)
         wx = _resp({}, status=401)
         server._http.get.side_effect = [geo, wx]
@@ -269,52 +248,61 @@ class TestGetCurrentWeather:
             _tool_fn(server_no_key, "get_current_weather")(location="London")
 
     def test_empty_weather_list_handled(self, server):
-        data = {**_ONE_CALL_CURRENT, "current": {**_ONE_CALL_CURRENT["current"], "weather": []}}
+        data = {**_CURRENT_WEATHER_2_5, "weather": []}
         self._setup(server, weather=data)
         result = _tool_fn(server, "get_current_weather")(location="London")
         assert result["description"] == ""
 
-    def test_empty_daily_gives_none_min_max(self, server):
-        data = {**_ONE_CALL_CURRENT, "daily": []}
+    def test_missing_main_block_gives_none_fields(self, server):
+        data = {**_CURRENT_WEATHER_2_5, "main": {}}
         self._setup(server, weather=data)
         result = _tool_fn(server, "get_current_weather")(location="London")
+        assert result["temperature"] is None
         assert result["temp_min"] is None
         assert result["temp_max"] is None
 
 
 # ---------------------------------------------------------------------------
-# get_forecast — One Call API 3.0
+# get_forecast — 5 Day / 3 Hour Forecast API (free tier)
 # ---------------------------------------------------------------------------
 
-_ONE_CALL_DAILY = {
-    "lat": 41.9,
-    "lon": 12.5,
-    "daily": [
-        {
-            "dt": 1717200000,
-            "temp": {"min": 18.0, "max": 24.0},
-            "humidity": 55,
-            "wind_speed": 4.0,
-            "weather": [{"description": "sunny"}],
-            "summary": "Sunny throughout the day",
-        },
-        {
-            "dt": 1717286400,
-            "temp": {"min": 15.0, "max": 21.0},
-            "humidity": 70,
-            "wind_speed": 6.0,
-            "weather": [{"description": "light rain"}],
-            "summary": "Rain expected in the afternoon",
-        },
-    ],
+def _day(dt, temp_min, temp_max, description, humidity, wind_speed):
+    return {
+        "dt": dt,
+        "main": {"temp_min": temp_min, "temp_max": temp_max, "humidity": humidity},
+        "weather": [{"description": description}],
+        "wind": {"speed": wind_speed},
+    }
+
+
+# Day 1 (2024-06-01, base dt=1717200000): entries at 00:00, 12:00 (midday), 21:00
+# Day 2 (2024-06-02, base dt=1717286400): entries at 00:00, 12:00 (midday), 21:00
+_FORECAST_2_5 = {
+    "list": [
+        _day(1717200000, 14, 16, "clear sky", 60, 2.0),
+        _day(1717243200, 20, 24, "sunny", 50, 4.0),
+        _day(1717275600, 15, 18, "clear sky", 62, 2.5),
+        _day(1717286400, 12, 15, "light rain", 75, 5.0),
+        _day(1717329600, 15, 21, "light rain", 70, 6.0),
+        _day(1717362000, 13, 17, "overcast clouds", 78, 4.5),
+    ]
 }
+
+
+def _make_multi_day_forecast(n_days, start_dt=1717200000):
+    """Build a forecast fixture with one midday entry per day, for clamp tests."""
+    entries = []
+    for i in range(n_days):
+        dt = start_dt + i * 86400 + 12 * 3600
+        entries.append(_day(dt, 10 + i, 15 + i, "clear sky", 50, 3.0))
+    return {"list": entries}
 
 
 class TestGetForecast:
 
     def _setup(self, server, geo=None, forecast=None):
         geo_resp = _resp(geo if geo is not None else _GEO_ROME)
-        fc_resp = _resp(forecast if forecast is not None else _ONE_CALL_DAILY)
+        fc_resp = _resp(forecast if forecast is not None else _FORECAST_2_5)
         server._http.get.side_effect = [geo_resp, fc_resp]
 
     def test_returns_daily_entries(self, server):
@@ -322,32 +310,35 @@ class TestGetForecast:
         result = _tool_fn(server, "get_forecast")(location="Rome")
         assert len(result) == 2
 
-    def test_fields_present(self, server):
+    def test_first_day_aggregation(self, server):
         self._setup(server)
         result = _tool_fn(server, "get_forecast")(location="Rome")
         day = result[0]
         assert day["date"] == "2024-06-01"
-        assert day["temp_min"] == 18.0
-        assert day["temp_max"] == 24.0
+        assert day["temp_min"] == 14
+        assert day["temp_max"] == 24
         assert day["description"] == "sunny"
-        assert day["humidity"] == 55
+        assert day["humidity"] == 50
         assert day["wind_speed"] == 4.0
-        assert day["summary"] == "Sunny throughout the day"
 
-    def test_uses_one_call_3_endpoint(self, server):
+    def test_second_day_aggregation(self, server):
+        self._setup(server)
+        result = _tool_fn(server, "get_forecast")(location="Rome")
+        day = result[1]
+        assert day["date"] == "2024-06-02"
+        assert day["temp_min"] == 12
+        assert day["temp_max"] == 21
+        assert day["description"] == "light rain"
+        assert day["humidity"] == 70
+        assert day["wind_speed"] == 6.0
+
+    def test_uses_2_5_forecast_endpoint(self, server):
         self._setup(server)
         _tool_fn(server, "get_forecast")(location="Rome")
         url = server._http.get.call_args_list[1][0][0]
-        assert "/data/3.0/onecall" in url
+        assert "/data/2.5/forecast" in url
 
-    def test_current_minutely_hourly_alerts_excluded(self, server):
-        self._setup(server)
-        _tool_fn(server, "get_forecast")(location="Rome")
-        params = server._http.get.call_args_list[1][1]["params"]
-        for part in ("current", "minutely", "hourly", "alerts"):
-            assert part in params["exclude"]
-
-    def test_geocode_lat_lon_passed_to_onecall(self, server):
+    def test_geocode_lat_lon_passed_to_forecast_call(self, server):
         self._setup(server)
         _tool_fn(server, "get_forecast")(location="Rome")
         params = server._http.get.call_args_list[1][1]["params"]
@@ -355,22 +346,21 @@ class TestGetForecast:
         assert params["lon"] == 12.5
 
     def test_days_clamped_to_minimum_1(self, server):
-        many = {**_ONE_CALL_DAILY, "daily": _ONE_CALL_DAILY["daily"] * 4}
-        self._setup(server, forecast=many)
+        self._setup(server)
         result = _tool_fn(server, "get_forecast")(location="Rome", days=0)
         assert len(result) == 1
 
-    def test_days_clamped_to_maximum_8(self, server):
-        eight_days = {**_ONE_CALL_DAILY, "daily": _ONE_CALL_DAILY["daily"] * 5}
-        self._setup(server, forecast=eight_days)
+    def test_days_clamped_to_maximum_5(self, server):
+        forecast = _make_multi_day_forecast(7)
+        self._setup(server, forecast=forecast)
         result = _tool_fn(server, "get_forecast")(location="Rome", days=20)
-        assert len(result) == 8
+        assert len(result) == 5
 
-    def test_default_days_is_7(self, server):
-        seven_days = {**_ONE_CALL_DAILY, "daily": _ONE_CALL_DAILY["daily"] * 4}
-        self._setup(server, forecast=seven_days)
+    def test_default_days_is_5(self, server):
+        forecast = _make_multi_day_forecast(7)
+        self._setup(server, forecast=forecast)
         result = _tool_fn(server, "get_forecast")(location="Rome")
-        assert len(result) == 7
+        assert len(result) == 5
 
     def test_units_forwarded(self, server):
         self._setup(server)
@@ -387,7 +377,7 @@ class TestGetForecast:
         with pytest.raises(ToolError, match="Location not found"):
             _tool_fn(server, "get_forecast")(location="Nowhere")
 
-    def test_401_on_onecall_raises_api_key_error(self, server):
+    def test_401_on_forecast_raises_api_key_error(self, server):
         geo = _resp(_GEO_ROME)
         fc = _resp({}, status=401)
         server._http.get.side_effect = [geo, fc]
@@ -411,6 +401,17 @@ class TestGetForecast:
     def test_missing_api_key_raises_tool_error(self, server_no_key):
         with pytest.raises(ToolError, match="API key"):
             _tool_fn(server_no_key, "get_forecast")(location="Rome")
+
+    def test_empty_list_returns_empty(self, server):
+        self._setup(server, forecast={"list": []})
+        result = _tool_fn(server, "get_forecast")(location="Rome")
+        assert result == []
+
+    def test_entry_missing_dt_is_skipped(self, server):
+        malformed = {"list": [{"main": {}, "weather": [{}], "wind": {}}, *_FORECAST_2_5["list"]]}
+        self._setup(server, forecast=malformed)
+        result = _tool_fn(server, "get_forecast")(location="Rome")
+        assert len(result) == 2
 
 
 # ---------------------------------------------------------------------------

@@ -124,12 +124,12 @@ class TestContactMCPServerIntegration:
 
     def test_search_by_account_id_delegates(self, server):
         """Test that the tool delegates to ContactDatabaseManager."""
-        results = server.contact_db.search_by_account_id("0011A00001xAC001")
+        results = server.contact_db.search_by_account_id("ACME-001")
         assert len(results) == 4
 
     def test_authenticate_delegates_success(self, server):
         """Test that authenticate delegates correctly for valid credentials."""
-        result = server.contact_db.authenticate("bugs.bunny@acme.com", "bugs2022!")
+        result = server.contact_db.authenticate("bugs.bunny@acme.com", "password123")
         assert result is not None
         assert result["FirstName"] == "Bugs"
         assert "Password" not in result
@@ -183,13 +183,13 @@ class TestContactMCPServerToolFunctions:
 
     def test_search_by_account_id_tool_returns_results(self, server):
         """Invoke the search_by_account_id tool closure directly."""
-        results = self._tool(server, "search_by_account_id")(account_id="0011A00001xAC001")
+        results = self._tool(server, "search_by_account_id")(account_id="ACME-001")
         assert len(results) == 4
 
     def test_authenticate_tool_success(self, server):
         """Invoke the authenticate tool closure with valid credentials."""
         result = self._tool(server, "authenticate")(
-            email="bugs.bunny@acme.com", password="bugs2022!"
+            email="bugs.bunny@acme.com", password="password123"
         )
         assert result["FirstName"] == "Bugs"
         assert "Password" not in result

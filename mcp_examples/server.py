@@ -57,5 +57,12 @@ MCPServer = GreetMCPServer
 server = GreetMCPServer()
 mcp = server.mcp  # FastMCP CLI expects a module-level 'mcp' object
 
+# Add your own tools here using the bare @mcp.tool() decorator, e.g.:
+#
+#     @mcp.tool()
+#     def reverse(text: str) -> str:
+#         """Return the input string reversed."""
+#         return text[::-1]
+
 if __name__ == "__main__":
     server.main()

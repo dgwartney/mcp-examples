@@ -20,7 +20,7 @@ sqlite3 contacts.db "SELECT * FROM contacts WHERE LastName LIKE '%Bunny%';"
 sqlite3 contacts.db "SELECT * FROM contacts WHERE Email = 'bugs.bunny@acme.com' COLLATE NOCASE;"
 
 # By account ID
-sqlite3 contacts.db "SELECT * FROM contacts WHERE AccountId = '0011A00001xAC001';"
+sqlite3 contacts.db "SELECT * FROM contacts WHERE AccountId = 'ACME-001';"
 ```
 
 ## Add a new contact
@@ -38,7 +38,7 @@ INSERT INTO contacts (
 ) VALUES (
   '0031A00001aBC021', 'Elmer', 'Sample', 'Mr.', 'Elmer Sample',
   'elmer.sample@example.com', '555-9999', '555-9998', 'Test User', 'Engineering',
-  '0011A00001xAC001', 'ACME Corporation',
+  'ACME-001', 'ACME Corporation',
   '1 Test St', 'Burbank', 'CA', '91505', 'US',
   'Web', '0051A000001owner', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z',
   'Test contact.', 0, 0, 0,

@@ -73,7 +73,7 @@ All tools accept a `location` string in any of these forms:
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `get_current_weather` | `location: str, units: str = "metric"` | Current conditions: temperature, humidity, pressure, wind, visibility, sunrise/sunset. `units`: `metric` (°C), `imperial` (°F), `standard` (K) |
-| `get_forecast` | `location: str, days: int = 7, units: str = "metric"` | Daily forecast summaries for up to 8 days: min/max temp, description, humidity, wind (days clamped 1–8) |
+| `get_forecast` | `location: str, days: int = 5, units: str = "metric"` | Daily forecast summaries for up to 5 days (aggregated from 3-hour interval data): min/max temp, description, humidity, wind (days clamped 1–5) |
 | `get_air_quality` | `location: str` | Current AQI (1=Good … 5=Very Poor) and pollutant levels: CO, NO₂, O₃, PM2.5, PM10 |
 
 ### Running
@@ -275,6 +275,7 @@ SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
 mcp-example/
 ├── mcp_examples/             # Main Python package
 │   ├── __init__.py           # Re-exports all public classes
+│   ├── base.py                # AuthenticatedMCPServer abstract base class
 │   ├── database.py           # DatabaseManager (SQLite API key storage)
 │   ├── middleware.py          # ApiKeyMiddleware (request authentication)
 │   ├── contact_database.py    # ContactDatabaseManager (mock contacts)
@@ -283,10 +284,12 @@ mcp-example/
 │   ├── twilio_server.py       # TwilioMCPServer + module-level mcp instance
 │   ├── weather.py             # WeatherMCPServer + module-level mcp instance
 │   ├── wikipedia.py           # WikipediaMCPServer + module-level mcp instance
+│   ├── combined.py            # Mounts all servers into one Starlette app
 │   ├── client.py              # MCPClient (remote tool invocation)
 │   └── cli.py                 # MCPClientApp CLI + main() entry point
 ├── tests/                     # Test suite
 │   ├── __init__.py
+│   ├── test_base.py           # AuthenticatedMCPServer tests
 │   ├── test_contact_database.py  # ContactDatabaseManager tests
 │   ├── test_contacts.py       # ContactMCPServer + integration tests
 │   ├── test_database.py       # DatabaseManager tests
@@ -294,7 +297,10 @@ mcp-example/
 │   ├── test_server.py        # GreetMCPServer + integration tests
 │   ├── test_client.py        # MCPClient + edge case tests
 │   ├── test_cli.py           # MCPClientApp + integration tests
-│   └── test_weather.py       # WeatherMCPServer tests
+│   ├── test_weather.py       # WeatherMCPServer tests
+│   ├── test_wikipedia.py     # WikipediaMCPServer tests
+│   ├── test_twilio_server.py # TwilioMCPServer tests
+│   └── test_combined.py      # Combined server mounting/lifespan tests
 ├── auth.py                   # Standalone middleware example (reference)
 ├── api_keys.db               # SQLite database (generated on first run)
 ├── Dockerfile                # Container image for Fly.io and VPS deployment

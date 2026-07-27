@@ -1,6 +1,7 @@
 # Integrating with Kore AI Agent Platform
 
-This guide explains how to configure and deploy this MCP server as a tool in the Kore AI Agent Platform.
+This guide explains how to configure and deploy the servers in this repository as tools
+in the Kore AI Agent Platform (Artemis).
 
 **Author:** David Gwartney (david.gwartney@gmail.com)
 
@@ -20,17 +21,33 @@ This guide explains how to configure and deploy this MCP server as a tool in the
 - [Managing API Keys](#managing-api-keys)
 - [Troubleshooting](#troubleshooting)
 - [Best Practices](#best-practices)
+- [Adding More Tools](#adding-more-tools)
 
 ---
 
 ## Overview
 
-The Kore AI Agent Platform uses the Model Context Protocol (MCP) to integrate with external tools and services. This MCP server provides:
+The Kore AI Agent Platform uses the Model Context Protocol (MCP) to integrate with
+external tools and services. This repository ships five MCP servers, all built on the
+same `AuthenticatedMCPServer` base class:
 
-- **Authentication**: SQLite-backed API key validation
-- **Tools**: Extensible tool framework (includes `greet` tool for demonstration)
-- **Transport**: HTTP-based MCP protocol (required for Kore AI)
-- **Security**: Case-insensitive header authentication with RFC 7230 compliance
+| Server | Module | Tools |
+|--------|--------|-------|
+| Greet | `mcp_examples/server.py` | `greet` |
+| Contact | `mcp_examples/contacts.py` | `search_by_last_name`, `search_by_email`, `search_by_account_id`, `authenticate` |
+| Wikipedia | `mcp_examples/wikipedia.py` | `search_pages`, `search_titles`, `get_page_summary`, `get_related_pages` |
+| Weather | `mcp_examples/weather.py` | `get_current_weather`, `get_forecast`, `get_air_quality` |
+| Twilio | `mcp_examples/twilio_server.py` | `send_sms`, `send_email` |
+
+`mcp_examples/combined.py` mounts all five into a single deployable Starlette app, each
+at its own URL path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`,
+`/twilio/mcp`) sharing one API key store — this is the recommended way to deploy to Kore
+AI, since it exposes every tool under one base URL with one API key. You can also run any
+single server standalone on its own port if you only need one.
+
+- **Authentication**: SQLite-backed API key validation (`X-API-Key` header)
+- **Transport**: HTTP-based MCP protocol (required for Kore AI — the default stdio
+  transport is local-only and not reachable from the platform)
 
 ### How It Works with Kore AI
 
@@ -40,17 +57,15 @@ The Kore AI Agent Platform uses the Model Context Protocol (MCP) to integrate wi
 4. **Execution**: Your MCP server executes the tool logic and returns results
 5. **Response**: The agent formulates a natural language response using the tool output
 
-**Important**: Kore AI requires HTTP-based MCP servers. The default stdio transport is not supported.
-
 ---
 
 ## Prerequisites
 
 Before integrating with Kore AI, ensure you have:
 
-- ✅ Python 3.12+
+- ✅ Python 3.10+ (see `pyproject.toml`'s `requires-python`)
 - ✅ `uv` package manager installed
-- ✅ This MCP server repository cloned and dependencies installed
+- ✅ This repository cloned and dependencies installed (`uv sync`)
 - ✅ A publicly accessible URL for your server (via ngrok, cloud deployment, etc.)
 - ✅ Access to a Kore AI Agent Platform account
 
@@ -58,14 +73,15 @@ Before integrating with Kore AI, ensure you have:
 
 ## Quick Start
 
-For the impatient, here's the fastest path to integration:
+For the impatient, here's the fastest path to integration using the combined server
+(all five servers, one API key):
 
 ```bash
 # 1. Install dependencies
 uv sync
 
-# 2. Start the server (will generate API key)
-uv run fastmcp run my_server.py --transport http --port 8000 --host 0.0.0.0
+# 2. Start the combined server (mounts all five servers on one port)
+uv run -m mcp_examples.combined --port 8000
 
 # 3. Note the API key printed on first run
 # Output: Generated default API key: QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80
@@ -73,7 +89,13 @@ uv run fastmcp run my_server.py --transport http --port 8000 --host 0.0.0.0
 # 4. In another terminal, expose via ngrok
 ngrok http 8000
 
-# 5. Use the ngrok URL in Kore AI configuration
+# 5. Use <ngrok_url>/greet/mcp, <ngrok_url>/contacts/mcp, etc. in Kore AI configuration
+```
+
+If you only need one server, run it standalone instead:
+
+```bash
+uv run -m mcp_examples.server --transport streamable-http --port 8000
 ```
 
 Continue reading for detailed deployment options and configuration steps.
@@ -103,11 +125,10 @@ brew install ngrok
 # Or download from https://ngrok.com/download
 ```
 
-#### Step 2: Start the MCP Server
+#### Step 2: Start the Combined Server
 
 ```bash
-# Start the server with HTTP transport
-uv run fastmcp run my_server.py --transport http --port 8000 --host 0.0.0.0
+uv run -m mcp_examples.combined --port 8000
 ```
 
 **On first run**, the server will generate and print an API key:
@@ -132,52 +153,44 @@ You'll see output like:
 Forwarding   https://abc123.ngrok.app -> http://localhost:8000
 ```
 
-**Note the HTTPS URL** - this is your public MCP server endpoint.
+**Note the HTTPS URL** — this is your public base URL. Each server is reachable at
+`<base_url>/<prefix>/mcp` (e.g. `https://abc123.ngrok.app/greet/mcp`).
 
-#### Step 4: Test the Endpoint
+#### Step 4: Test an Endpoint
 
 Verify your server is accessible:
 
 ```bash
-curl -X POST https://abc123.ngrok.app/mcp \
+curl -X POST https://abc123.ngrok.app/greet/mcp \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY_HERE" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
 ```
 
-Expected response should list available tools including `greet`.
+Expected response should list the `greet` tool.
 
 ### Option 2: Docker Deployment
 
 **Best for**: Production deployments, consistent environments, easy scaling.
 
-#### Step 1: Create Dockerfile
-
-Use the provided Dockerfile (or create it):
+This repository already includes a working `Dockerfile` at the project root that runs
+the combined server — use it directly rather than hand-rolling one:
 
 ```dockerfile
 FROM python:3.12-slim
-
 WORKDIR /app
-
-# Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-
-# Copy project files
 COPY pyproject.toml uv.lock ./
-COPY my_server.py ./
-
-# Install dependencies
+COPY mcp_examples/ mcp_examples/
 RUN uv sync --frozen
-
-# Expose port
 EXPOSE 8000
-
-# Run server
-CMD ["uv", "run", "fastmcp", "run", "my_server.py", "--transport", "http", "--port", "8000", "--host", "0.0.0.0"]
+CMD ["uv", "run", "-m", "mcp_examples.combined", "--port", "8000", "--host", "0.0.0.0"]
 ```
 
-#### Step 2: Build and Run Container
+(See the actual `Dockerfile` in the repo root — it may have evolved since this guide was
+written; treat that file as the source of truth.)
+
+#### Step 1: Build and Run Container
 
 ```bash
 # Build the Docker image
@@ -192,7 +205,7 @@ docker run -d \
   mcp-server
 ```
 
-#### Step 3: Get the API Key
+#### Step 2: Get the API Key
 
 ```bash
 # Check container logs for the generated API key
@@ -204,7 +217,7 @@ Look for the line:
 Generated default API key: QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80
 ```
 
-#### Step 4: Deploy to Cloud
+#### Step 3: Deploy to Cloud
 
 Deploy your Docker container to a cloud provider:
 
@@ -219,71 +232,73 @@ Make note of the public URL provided by your cloud platform.
 
 **Best for**: Production use without Docker complexity.
 
-#### Railway Deployment
+#### Railway / Render Deployment
 
-1. **Create `Procfile`**:
-   ```
-   web: uv run fastmcp run my_server.py --transport http --port $PORT --host 0.0.0.0
-   ```
+This repository already includes a working `Procfile` at the project root, which deploys
+the single Greet server as a simple starting point:
 
-2. **Deploy**:
+```
+web: uv run -m mcp_examples.server --transport streamable-http --port $PORT --host 0.0.0.0
+```
+
+If you want the combined server (all five, one API key) on Railway/Render instead, edit
+the `Procfile` to `web: uv run -m mcp_examples.combined --port $PORT --host 0.0.0.0`, or
+use the Docker deployment option above, which already runs the combined server by default.
+
+1. **Deploy (Railway)**:
    ```bash
-   # Install Railway CLI
    npm install -g @railway/cli
-
-   # Login and deploy
    railway login
    railway init
    railway up
    ```
 
-3. **Configure Environment**:
+2. **Configure Environment**:
    - Set `MCP_DB_PATH` if needed (Railway provides persistent volumes)
    - Note the Railway-provided public URL
 
-4. **Get API Key**:
+3. **Get API Key**:
    ```bash
    railway logs
    ```
 
-#### Render / Fly.io Deployment
-
-Similar process:
-1. Create `Procfile` as above
-2. Connect your repository
-3. Configure environment variables
-4. Deploy and note the public URL
-5. Check logs for the generated API key
+For Render or Fly.io, see [docs/deployment/render.md](docs/deployment/render.md) and
+[docs/deployment/flyio.md](docs/deployment/flyio.md) for full provider-specific guides,
+including secrets configuration for the Weather and Twilio servers.
 
 ---
 
 ## Configuring in Kore AI
 
-Once your MCP server is deployed and accessible via HTTPS, configure it in Kore AI.
+Once your combined server is deployed and accessible via HTTPS, configure each server you
+need as a separate MCP Tool in Kore AI. Every entry in `mcp_examples/combined.py`'s
+`SERVER_REGISTRY` gets its own `/<prefix>/mcp` URL and its own set of tools — repeat the
+steps below once per server you want to expose.
 
 ### Step 1: Access Tools Section
 
 1. Log in to your Kore AI Agent Platform account
 2. Navigate to your Agentic App
 3. Go to the **Tools** section
-4. Click **Add Tool** → **+New Tool**
+4. Click **Add Tool** → **+New Tool** → **MCP Tool**
 
-### Step 2: Select MCP Server Type
+### Step 2: Select Transport
 
-1. Choose **MCP Server** as the tool type
-2. Select **HTTP** as the transport method (not SSE)
+Choose **HTTP** (Streamable HTTP) as the transport method — this repository does not use
+SSE.
 
 ### Step 3: Enter Server Details
 
-Fill in the configuration form:
+Fill in the configuration form, one server at a time. For example, for the Contact server:
 
 | Field | Value | Example |
 |-------|-------|---------|
-| **Name** | `mcp-examples` | Unique identifier for your server |
-| **Description** | `MCP server with greeting tool` | Brief description of capabilities |
-| **Server URL** | Your deployment URL + `/mcp` | `https://abc123.ngrok.app/mcp` |
+| **Name** | `mcp-examples-contacts` | Unique identifier for this server's tools |
+| **Description** | `Mock CRM contact search and auth tools` | Brief description of capabilities |
+| **Server URL** | Your deployment base URL + the server's prefix + `/mcp` | `https://abc123.ngrok.app/contacts/mcp` |
 
-**⚠️ IMPORTANT**: Always append `/mcp` to your server URL - this is the MCP endpoint path.
+**⚠️ IMPORTANT**: Each server has its own path — see the table in [Overview](#overview)
+and [docs/servers.md](docs/servers.md) for the full list of prefixes and tools.
 
 ### Step 4: Configure Authentication
 
@@ -292,51 +307,39 @@ Fill in the configuration form:
 3. Add a new header:
    - **Name**: `X-API-Key`
    - **Value**: Your API key (from server startup logs)
-   - **Description**: `API key for authentication`
 
-**Example**:
-```
-Name: X-API-Key
-Value: QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80
-```
+The combined server shares one API key across every mounted path, so you only need to do
+this once and reuse the same key for every server you register.
 
 ### Step 5: Test Connection
 
 1. Click the **Test** button at the bottom of the configuration page
 2. Kore AI will attempt to connect to your server
-3. Verify you see a success message and available tools are listed
-
-**Expected result**: You should see the `greet` tool discovered.
+3. Verify you see a success message and the expected tools listed (see
+   [docs/servers.md](docs/servers.md) for each server's tool list)
 
 ### Step 6: Select Tools
 
-1. From the list of discovered tools, check the box next to `greet`
-2. Click **Add Selected** to import the tool into your agent
-
-**Note**: Kore AI will automatically prefix the tool name: `mcp-examples__greet`
+Check the tools you want and click **Add Selected**. Kore AI automatically prefixes tool
+names with the server name you chose in Step 3 (e.g. `mcp-examples-contacts__search_by_last_name`).
 
 ### Step 7: Save Configuration
 
-1. Review your configuration
-2. Click **Save** or **Add Tool** to finalize
-3. The tool is now available for your AI agent to use
+Review your configuration and click **Save**/**Add Tool** to finalize. Repeat Steps 1-7
+for each additional server you want to expose.
 
 ---
 
 ## Testing the Integration
 
-After configuration, test the integration to ensure everything works correctly.
-
 ### In Kore AI Platform
 
 1. Open your agent in **Preview** mode
 2. Navigate to the **Tools** section
-3. Find `mcp-examples__greet` in the list
+3. Find one of your registered tools (e.g. `mcp-examples-greet__greet`)
 4. Click **Run Sample Execution**
 
-#### Sample Test Input
-
-Enter the following JSON in the input field:
+#### Sample Test Input (greet)
 
 ```json
 {
@@ -344,60 +347,60 @@ Enter the following JSON in the input field:
 }
 ```
 
-Click **Execute**.
-
-#### Expected Sample Response
+Expected response:
 
 ```json
 {
   "content": [
-    {
-      "type": "text",
-      "text": "Hello, Alice!"
-    }
+    {"type": "text", "text": "Hello, Alice!"}
   ]
 }
 ```
 
-### Via Conversational Interface
+#### Sample Test Input (contacts — search_by_last_name)
 
-Test the tool through natural conversation:
+```json
+{
+  "last_name": "Bunny"
+}
+```
+
+Expected response includes a list of matching contact records (e.g. Bugs Bunny, Lola Bunny).
+
+### Via Conversational Interface
 
 **User**: "Can you greet someone named Bob?"
 
-**Agent**: The agent should recognize the intent, invoke the `mcp-examples__greet` tool with `name: "Bob"`, and respond: "Hello, Bob!"
+**Agent**: Recognizes the intent, invokes `greet` with `name: "Bob"`, and responds:
+"Hello, Bob!"
 
 ### Direct API Testing
 
-Test your MCP server directly (outside Kore AI) to isolate issues:
+Test any mounted server directly (outside Kore AI) to isolate issues — substitute the
+path for the server you're testing:
 
 ```bash
-# Test tool discovery
-curl -X POST https://your-server.com/mcp \
+# Test tool discovery on the greet server
+curl -s -X POST https://your-server.com/greet/mcp \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/list",
-    "id": 1
-  }'
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
 
 # Test greet tool invocation
-curl -X POST https://your-server.com/mcp \
+curl -s -X POST https://your-server.com/greet/mcp \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
-    "params": {
-      "name": "greet",
-      "arguments": {
-        "name": "Charlie"
-      }
-    },
+    "params": {"name": "greet", "arguments": {"name": "Charlie"}},
     "id": 2
   }'
 ```
+
+Note that a real MCP session over Streamable HTTP requires an `initialize` handshake
+before `tools/call` — see [docs/extending.md](docs/extending.md)'s curl recipe for the
+full three-step sequence (initialize → notify initialized → call).
 
 ---
 
@@ -411,8 +414,6 @@ sqlite3 api_keys.db "SELECT * FROM api_keys;"
 
 ### Adding Additional Keys
 
-Generate a new secure key and add it:
-
 ```bash
 # Generate a cryptographically secure key
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -423,25 +424,21 @@ sqlite3 api_keys.db "INSERT INTO api_keys (key) VALUES ('NEW_KEY_HERE');"
 
 ### Rotating Keys
 
-For production environments, implement key rotation:
-
 1. **Add a new key** (don't remove the old one yet)
 2. **Update Kore AI** configuration with the new key
 3. **Test** the integration thoroughly
-4. **Remove the old key** from the database:
+4. **Remove the old key**:
    ```bash
    sqlite3 api_keys.db "DELETE FROM api_keys WHERE key = 'OLD_KEY';"
    ```
 
 ### Revoking Keys
 
-Immediately revoke compromised keys:
-
 ```bash
 sqlite3 api_keys.db "DELETE FROM api_keys WHERE key = 'COMPROMISED_KEY';"
 ```
 
-**⚠️ WARNING**: Revoking a key will immediately break any integrations using it.
+**⚠️ WARNING**: Revoking a key immediately breaks any integrations using it.
 
 ---
 
@@ -451,23 +448,17 @@ sqlite3 api_keys.db "DELETE FROM api_keys WHERE key = 'COMPROMISED_KEY';"
 
 #### 1. "Connection Failed" in Kore AI
 
-**Symptoms**: Test button shows connection error.
-
 **Possible Causes**:
 - Server not running or not accessible
-- Incorrect URL (missing `/mcp` endpoint)
+- Incorrect URL (missing the server's `/<prefix>/mcp` path)
 - Firewall blocking external access
-- ngrok tunnel expired (free tier has 2-hour limit)
+- ngrok tunnel expired (free tier has a time limit)
 
 **Solutions**:
 ```bash
-# Verify server is running
-curl https://your-server.com/mcp
-
-# Check server logs
-docker logs mcp-server  # For Docker
-railway logs            # For Railway
-heroku logs --tail      # For Heroku
+# Verify the server is running and check logs
+docker logs mcp-server   # For Docker
+railway logs             # For Railway
 
 # Restart ngrok (if using)
 ngrok http 8000
@@ -475,23 +466,12 @@ ngrok http 8000
 
 #### 2. "Unauthorized: Invalid or missing API Key"
 
-**Symptoms**: Connection succeeds but tool discovery fails.
-
-**Possible Causes**:
-- API key not configured in headers
-- Incorrect API key value
-- Key was deleted from database
-
 **Solutions**:
-1. Verify the API key in Kore AI configuration matches database:
+1. Verify the API key in Kore AI configuration matches the database:
    ```bash
    sqlite3 api_keys.db "SELECT * FROM api_keys;"
    ```
-
-2. Check header configuration:
-   - Header name must be exactly `X-API-Key` (case-insensitive)
-   - Value must match a key in the database
-
+2. Check header configuration — header name must be exactly `X-API-Key` (case-insensitive)
 3. Regenerate if lost:
    ```bash
    python3 -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -500,96 +480,38 @@ ngrok http 8000
 
 #### 3. "No Tools Discovered"
 
-**Symptoms**: Connection succeeds but no tools appear.
-
-**Possible Causes**:
-- Server code issue
-- Wrong MCP protocol implementation
-- Tool registration failed
-
 **Solutions**:
 ```bash
-# Verify tools are registered
-curl -X POST https://your-server.com/mcp \
+# Verify tools are registered on the server/path you configured
+curl -s -X POST https://your-server.com/<prefix>/mcp \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_KEY" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
-
-# Check server logs for errors
-# Restart server if needed
 ```
+- Double-check you used the right `/<prefix>/mcp` path for the server whose tools you want.
 
 #### 4. "Tool Invocation Failed"
 
-**Symptoms**: Tool discovered but execution fails.
-
-**Possible Causes**:
-- Invalid parameters passed
-- Server-side error
-- Timeout issues
-
 **Solutions**:
-1. Test the tool directly:
-   ```bash
-   curl -X POST https://your-server.com/mcp \
-     -H "Content-Type: application/json" \
-     -H "X-API-Key: YOUR_KEY" \
-     -d '{
-       "jsonrpc": "2.0",
-       "method": "tools/call",
-       "params": {
-         "name": "greet",
-         "arguments": {"name": "Test"}
-       },
-       "id": 2
-     }'
-   ```
-
-2. Check parameter format matches tool schema
+1. Test the tool directly with curl (see [Direct API Testing](#direct-api-testing))
+2. Check parameter format matches the tool's schema
 3. Review server logs for errors
 
 #### 5. ngrok Tunnel Issues
 
-**Symptoms**: "Tunnel not found" or connection drops.
-
-**Possible Causes**:
-- Free tier tunnel expired (2-hour limit)
-- ngrok process stopped
-- Network connectivity issues
-
-**Solutions**:
 ```bash
 # Restart ngrok
 pkill ngrok
 ngrok http 8000
-
-# For longer sessions, consider ngrok paid tier
-# Or use a permanent cloud deployment instead
 ```
 
 #### 6. Database File Not Found
 
-**Symptoms**: Server fails to start with database error.
-
-**Possible Causes**:
-- Database path incorrect
-- Permissions issue
-- Volume not mounted (Docker)
-
-**Solutions**:
 ```bash
-# Check database path
 echo $MCP_DB_PATH
-
-# Set explicitly
 export MCP_DB_PATH=/app/data/api_keys.db
-
-# For Docker, verify volume mount
+# For Docker, verify the volume mount:
 docker run -v $(pwd)/data:/app/data ...
-
-# Check file permissions
-ls -la api_keys.db
-chmod 644 api_keys.db
 ```
 
 ---
@@ -598,54 +520,51 @@ chmod 644 api_keys.db
 
 ### Security
 
-1. **Use HTTPS Only**: Never expose your MCP server over plain HTTP in production
-2. **Rotate Keys Regularly**: Change API keys every 90 days
-3. **Monitor Access**: Keep logs of all API key usage
-4. **Separate Keys by Environment**: Use different keys for dev/staging/production
-5. **Backup Database**: Regularly backup `api_keys.db`
+1. **Use HTTPS Only** in production
+2. **Rotate Keys Regularly**
+3. **Monitor Access** via logs
+4. **Separate Keys by Environment**
+5. **Backup the database**:
    ```bash
-   # Backup command
    cp api_keys.db api_keys.db.backup-$(date +%Y%m%d)
    ```
 
 ### Deployment
 
-1. **Use Environment Variables**: Store `MCP_DB_PATH` in environment, not code
-2. **Persistent Storage**: Ensure database survives container restarts
-3. **Health Checks**: Implement monitoring to detect server failures
-4. **Logging**: Enable comprehensive logging for troubleshooting:
-   ```bash
-   # Redirect logs to file
-   uv run fastmcp run my_server.py --transport http --port 8000 > server.log 2>&1
-   ```
-5. **Containerize for Production**: Use Docker for consistent deployments
+1. **Use Environment Variables**: `MCP_DB_PATH` and any server-specific secrets
+   (`OPENWEATHER_API_KEY`, `TWILIO_*`, `SENDGRID_*`) belong in environment/secret
+   configuration, not code
+2. **Persistent Storage**: Ensure the database survives container restarts
+3. **Logging**: Enable comprehensive logging for troubleshooting
 
 ### Kore AI Integration
 
-1. **Descriptive Naming**: Use clear, descriptive names for MCP servers in Kore AI
-2. **Document Tools**: Add detailed descriptions for each tool in your server code
-3. **Test Thoroughly**: Always test tools in Preview mode before production
-4. **Manual Refresh**: Remember to refresh in Kore AI after updating server tools
+1. **Descriptive Naming**: Use clear names per server/tool-group in Kore AI
+2. **Document Tools**: Keep [docs/servers.md](docs/servers.md) current for each server
+3. **Test Thoroughly**: Always test in Preview mode before production
+4. **Manual Refresh**: Kore AI does not auto-detect server changes — remember to click the
+   refresh icon on the MCP server configuration after adding/changing tools
 5. **Enable Artifacts**: Turn on "Include Tool Response in Artifacts" for debugging
-6. **Version Control**: Tag server versions to track which version Kore AI is using
 
 ### Scaling
 
 1. **Horizontal Scaling**: Deploy multiple instances behind a load balancer
-2. **Database Replication**: For high availability, consider database replication
-3. **Caching**: Add caching layer for frequently accessed data
-4. **Rate Limiting**: Implement rate limiting to prevent abuse
-5. **Monitoring**: Use application performance monitoring (APM) tools
+2. **Rate Limiting**: Implement rate limiting to prevent abuse
+3. **Monitoring**: Use application performance monitoring (APM) tools
 
 ---
 
 ## Adding More Tools
 
-The included `greet` tool is a simple example. To add more tools:
+Every server in this repo follows the same pattern: subclass `AuthenticatedMCPServer` and
+register tools in `_register_tools()` (see [docs/extending.md](docs/extending.md) for the
+full walkthrough, including a checklist for adding an entirely new server).
 
-### 1. Edit `my_server.py`
+For a minimal example to copy from, see `mcp_examples/_template.py` — the smallest
+possible server, with a single placeholder tool and no domain logic.
 
-Add new tool definitions in the `_register_tools` method:
+To add a tool to an existing server, edit its `_register_tools()` method, e.g. in
+`mcp_examples/server.py`:
 
 ```python
 def _register_tools(self) -> None:
@@ -655,46 +574,12 @@ def _register_tools(self) -> None:
 
     @self.mcp.tool(description="Get the current server time")
     def get_time() -> str:
-        from datetime import datetime
-        return datetime.utcnow().isoformat()
-
-    @self.mcp.tool(description="Add two numbers together")
-    def add(a: int, b: int) -> int:
-        return a + b
+        from datetime import datetime, timezone
+        return datetime.now(timezone.utc).isoformat()
 ```
 
-### 2. Restart the Server
-
-```bash
-# Stop the current server (Ctrl+C)
-# Restart with new tools
-uv run fastmcp run my_server.py --transport http --port 8000 --host 0.0.0.0
-```
-
-### 3. Refresh in Kore AI
-
-**⚠️ IMPORTANT**: Kore AI does not automatically detect server changes.
-
-1. Go to the **Tools** section in Kore AI
-2. Find your MCP server configuration
-3. Click the **refresh icon** (↻) next to the server name
-4. Verify new tools appear in the list
-5. Select and add the new tools
-
-### 4. Test New Tools
-
-Use the Preview mode to test each new tool with sample inputs.
-
----
-
-## Next Steps
-
-- **Add Real Functionality**: Replace the demo `greet` tool with your actual business logic
-- **Implement Error Handling**: Add proper error responses for tool failures
-- **Add Input Validation**: Validate tool parameters before processing
-- **Create Multiple Servers**: Deploy separate MCP servers for different capabilities
-- **Monitor Performance**: Set up monitoring and alerting for your production server
-- **Document Your Tools**: Provide clear descriptions and examples for each tool
+Restart the server, then in Kore AI click the refresh icon on that server's MCP Tool
+configuration and re-select any new tools.
 
 ---
 
@@ -713,8 +598,3 @@ For issues with:
 - **This MCP Server**: Open an issue in the project repository
 - **Kore AI Platform**: Contact Kore AI support
 - **FastMCP Library**: Visit the FastMCP GitHub repository
-
----
-
-**Last Updated**: February 2026
-**Document Version**: 1.0.0

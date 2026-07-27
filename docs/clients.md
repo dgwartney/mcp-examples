@@ -151,7 +151,7 @@ curl -s -X POST http://localhost:8000/mcp \
     "method": "tools/call",
     "params": {
       "name": "search_by_account_id",
-      "arguments": {"account_id": "0011A00001xAC001"}
+      "arguments": {"account_id": "ACME-001"}
     }
   }'
 ```
@@ -169,7 +169,7 @@ curl -s -X POST http://localhost:8000/mcp \
     "method": "tools/call",
     "params": {
       "name": "authenticate",
-      "arguments": {"email": "bugs.bunny@acme.com", "password": "bugs2022!"}
+      "arguments": {"email": "bugs.bunny@acme.com", "password": "password123"}
     }
   }'
 ```
@@ -215,7 +215,7 @@ curl -s -X POST http://localhost:8000/mcp \
   }'
 ```
 
-**Get 7-day forecast:**
+**Get 3-day forecast:**
 ```bash
 curl -s -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
@@ -228,7 +228,7 @@ curl -s -X POST http://localhost:8000/mcp \
     "method": "tools/call",
     "params": {
       "name": "get_forecast",
-      "arguments": {"location": "Tokyo,JP", "days": 7, "units": "metric"}
+      "arguments": {"location": "Tokyo,JP", "days": 3, "units": "metric"}
     }
   }'
 ```

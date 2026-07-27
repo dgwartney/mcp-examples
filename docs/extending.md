@@ -1,5 +1,49 @@
 # Extending the Project
 
+## Adding a New Server
+
+Follow this checklist when creating an entirely new server (as opposed to adding a tool
+to an existing one — see [Adding New Tools](#adding-new-tools) below). The step most
+often missed by hand is registering the new server in `combined.py` — that's the step
+that actually exposes it to Artemis/Kore AI, so don't skip it.
+
+1. **Create the module.** Copy `mcp_examples/_template.py` to `mcp_examples/<name>.py`
+   and rename the class, or run the scaffold script to automate steps 1-3:
+   ```bash
+   uv run python scripts/new_server.py <Name>
+   ```
+2. **Implement your tools** in the new class's `_register_tools()` method (see
+   [Adding New Tools](#adding-new-tools) below for the pattern).
+3. **Register the server in `mcp_examples/combined.py`** — import the class and append
+   `("<name>", <Name>MCPServer)` to `SERVER_REGISTRY`. **This is the step most often
+   forgotten when done by hand** — without it, the server never gets mounted or exposed
+   to Artemis. (The scaffold script does this automatically.)
+4. **Register it in `mcp_examples/__init__.py`'s `__all__` and `_LAZY_IMPORTS`** so
+   `from mcp_examples import <Name>MCPServer` works, matching every other server. Not
+   required for the server to run — `combined.py` imports submodules directly — but
+   skipping it leaves your server inconsistent with the rest of the package's public API.
+   (Also automated by the scaffold script.)
+5. **Add a section to `docs/servers.md`** documenting the new server's tools, required
+   env vars, and any seed data — follow the existing per-server sections as a model.
+6. **Write/extend tests** in `tests/test_<name>.py` (the scaffold script generates a
+   skeleton to fill in). Model a bare server on `tests/test_server.py`, one with an
+   external HTTP dependency on `tests/test_weather.py`, or one with a domain SQLite store
+   on `tests/test_contacts.py`/`tests/test_contact_database.py`.
+7. **Run the test suite**: `uv run pytest` — confirm everything passes and coverage holds.
+8. **Curl the new endpoint locally** to sanity-check it end-to-end before touching Kore
+   AI:
+   ```bash
+   uv run -m mcp_examples.combined --port 8000
+   ```
+   then follow the curl recipe in [Serving Multiple Servers on One Port](#serving-multiple-servers-on-one-port)
+   below, substituting your new server's `/<name>/mcp` path.
+9. **Register the new server as an MCP Tool in Kore AI** (Test → Import) — see
+   [KORE_AI_INTEGRATION.md](../KORE_AI_INTEGRATION.md#configuring-in-kore-ai) for the
+   full walkthrough.
+10. **Remember to manually refresh in Kore AI** after any later change to the server's
+    tools — Kore AI does not auto-detect server changes (see
+    [KORE_AI_INTEGRATION.md](../KORE_AI_INTEGRATION.md#best-practices)).
+
 ## Adding New Tools
 
 Subclass `AuthenticatedMCPServer` and implement `_register_tools()`. Edit `mcp_examples/server.py`:

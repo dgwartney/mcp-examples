@@ -1,4 +1,4 @@
-app = 'mcp-example'
+app = 'mcp-server-kit'
 primary_region = 'ord'
 
 [build]

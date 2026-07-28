@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples.database
+Unit tests for mcp_server_kit.database
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -11,7 +11,7 @@ import tempfile
 
 import pytest
 
-from mcp_examples.database import DatabaseManager
+from mcp_server_kit.database import DatabaseManager
 
 
 class TestDatabaseManager:
@@ -53,9 +53,10 @@ class TestDatabaseManager:
         assert result is not None
         assert result[0] == "api_keys"
 
-    def test_init_db_creates_default_key(self, db_manager, temp_db_path, capsys):
+    def test_init_db_creates_default_key(self, db_manager, temp_db_path, caplog):
         """Test that init_db creates a default API key on first run."""
-        db_manager.init_db()
+        with caplog.at_level("INFO", logger="mcp_server_kit.database"):
+            returned_key = db_manager.init_db()
 
         # Verify key was generated
         conn = sqlite3.connect(temp_db_path)
@@ -66,9 +67,10 @@ class TestDatabaseManager:
 
         assert count == 1
 
-        # Verify key was printed
-        captured = capsys.readouterr()
-        assert "Generated default API key:" in captured.out
+        # init_db returns the generated key and logs it (not printed to stdout)
+        assert returned_key is not None
+        assert "Generated default API key:" in caplog.text
+        assert returned_key in caplog.text
 
     def test_init_db_does_not_duplicate_key(self, db_manager, temp_db_path):
         """Test that init_db doesn't create duplicate keys on subsequent runs."""

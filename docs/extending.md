@@ -1,25 +1,39 @@
 # Extending the Project
 
+## Two ways to build a server
+
+- **Start your own project (installed users):** `uv tool install mcp-server-kit`, then
+  `mcp-server-kit new <project-dir>` generates a standalone project in your own
+  directory. Use `--standalone` to vendor the base classes (no runtime dependency on
+  mcp-server-kit), and choose which bundled example servers to include when prompted (or
+  with `--with-examples`, `--all-examples`, `--no-examples`). Nothing below applies — the
+  generated project is self-contained.
+- **Extend *this* repo (contributors):** follow the checklist below, or run
+  `mcp-server-kit add-server <Name>` (equivalently `uv run python scripts/new_server.py <Name>`)
+  from a clone to automate steps 1–4.
+
 ## Adding a New Server
 
-Follow this checklist when creating an entirely new server (as opposed to adding a tool
-to an existing one — see [Adding New Tools](#adding-new-tools) below). The step most
-often missed by hand is registering the new server in `combined.py` — that's the step
-that actually exposes it to Artemis/Kore AI, so don't skip it.
+Follow this checklist when creating an entirely new server in this repo (as opposed to
+adding a tool to an existing one — see [Adding New Tools](#adding-new-tools) below). The
+step most often missed by hand is registering the new server in `combined.py` — that's
+the step that actually exposes it to Artemis/Kore AI, so don't skip it.
 
-1. **Create the module.** Copy `mcp_examples/_template.py` to `mcp_examples/<name>.py`
-   and rename the class, or run the scaffold script to automate steps 1-3:
+1. **Create the module.** Copy `mcp_server_kit/_template.py` to `mcp_server_kit/<name>.py`
+   and rename the class, or run the scaffold to automate steps 1-4:
    ```bash
+   mcp-server-kit add-server <Name>
+   # or, equivalently, from a clone without installing:
    uv run python scripts/new_server.py <Name>
    ```
 2. **Implement your tools** in the new class's `_register_tools()` method (see
    [Adding New Tools](#adding-new-tools) below for the pattern).
-3. **Register the server in `mcp_examples/combined.py`** — import the class and append
+3. **Register the server in `mcp_server_kit/combined.py`** — import the class and append
    `("<name>", <Name>MCPServer)` to `SERVER_REGISTRY`. **This is the step most often
    forgotten when done by hand** — without it, the server never gets mounted or exposed
    to Artemis. (The scaffold script does this automatically.)
-4. **Register it in `mcp_examples/__init__.py`'s `__all__` and `_LAZY_IMPORTS`** so
-   `from mcp_examples import <Name>MCPServer` works, matching every other server. Not
+4. **Register it in `mcp_server_kit/__init__.py`'s `__all__` and `_LAZY_IMPORTS`** so
+   `from mcp_server_kit import <Name>MCPServer` works, matching every other server. Not
    required for the server to run — `combined.py` imports submodules directly — but
    skipping it leaves your server inconsistent with the rest of the package's public API.
    (Also automated by the scaffold script.)
@@ -33,7 +47,7 @@ that actually exposes it to Artemis/Kore AI, so don't skip it.
 8. **Curl the new endpoint locally** to sanity-check it end-to-end before touching Kore
    AI:
    ```bash
-   uv run -m mcp_examples.combined --port 8000
+   uv run -m mcp_server_kit.combined --port 8000
    ```
    then follow the curl recipe in [Serving Multiple Servers on One Port](#serving-multiple-servers-on-one-port)
    below, substituting your new server's `/<name>/mcp` path.
@@ -46,7 +60,7 @@ that actually exposes it to Artemis/Kore AI, so don't skip it.
 
 ## Adding New Tools
 
-Subclass `AuthenticatedMCPServer` and implement `_register_tools()`. Edit `mcp_examples/server.py`:
+Subclass `AuthenticatedMCPServer` and implement `_register_tools()`. Edit `mcp_server_kit/server.py`:
 
 ```python
 def _register_tools(self) -> None:

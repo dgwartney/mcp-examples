@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples.middleware
+Unit tests for mcp_server_kit.middleware
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -15,8 +15,8 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.middleware import Middleware
 
-from mcp_examples.database import DatabaseManager
-from mcp_examples.middleware import ApiKeyMiddleware
+from mcp_server_kit.database import DatabaseManager
+from mcp_server_kit.middleware import ApiKeyMiddleware
 
 
 def _make_app(db_manager):

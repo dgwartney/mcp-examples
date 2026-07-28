@@ -43,7 +43,7 @@ docker run -p 8000:8000 \
   -e CONTACTS_DB_PATH=/data/contacts.db \
   -v $(pwd)/data:/data \
   mcp-server \
-  uv run -m mcp_examples.contacts --transport streamable-http --port 8000 --host 0.0.0.0
+  uv run -m mcp_server_kit.contacts --transport streamable-http --port 8000 --host 0.0.0.0
 ```
 
 ## Expose a local Docker container via ngrok
@@ -105,14 +105,14 @@ Your server is now publicly accessible at `https://abc123.ngrok.app/mcp`.
 
 **macOS:**
 ```bash
-uv run -m mcp_examples.cli \
+uv run -m mcp_server_kit.cli \
   --api-key YOUR_API_KEY \
   --url https://YOUR-NGROK-SUBDOMAIN.ngrok.app/mcp
 ```
 
 **Windows (PowerShell):**
 ```powershell
-uv run -m mcp_examples.cli `
+uv run -m mcp_server_kit.cli `
   --api-key YOUR_API_KEY `
   --url https://YOUR-NGROK-SUBDOMAIN.ngrok.app/mcp
 ```
@@ -126,7 +126,7 @@ docker run -p 8000:8000 \
   -e CONTACTS_DB_PATH=/data/contacts.db \
   -v $(pwd)/data:/data \
   mcp-server \
-  uv run -m mcp_examples.contacts --transport streamable-http --port 8000 --host 0.0.0.0
+  uv run -m mcp_server_kit.contacts --transport streamable-http --port 8000 --host 0.0.0.0
 ```
 
 ## Deploy to a VPS

@@ -2,7 +2,7 @@
 #
 # Test the MCP contact server using curl.
 # Requires the server to be running:
-#   uv run -m mcp_examples.contacts --transport streamable-http --port 8000
+#   uv run -m mcp_server_kit.contacts --transport streamable-http --port 8000
 #
 # Usage:
 #   API_KEY=<your-api-key> ./test_curl.sh

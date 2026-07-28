@@ -11,7 +11,7 @@ Endpoints (when running on port 8000):
     /twilio/mcp     → Twilio SMS + SendGrid email server
 
 Run locally:
-    OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.combined --port 8000
+    OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.combined --port 8000
 
 Deploy to Fly.io:
     fly secrets set OPENWEATHER_API_KEY=<key>
@@ -30,11 +30,11 @@ import uvicorn
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
-from mcp_examples.contacts import ContactMCPServer
-from mcp_examples.server import GreetMCPServer
-from mcp_examples.twilio_server import TwilioMCPServer
-from mcp_examples.weather import WeatherMCPServer
-from mcp_examples.wikipedia import WikipediaMCPServer
+from mcp_server_kit.contacts import ContactMCPServer
+from mcp_server_kit.server import GreetMCPServer
+from mcp_server_kit.twilio_server import TwilioMCPServer
+from mcp_server_kit.weather import WeatherMCPServer
+from mcp_server_kit.wikipedia import WikipediaMCPServer
 
 # Central registry: (url_prefix, ServerClass)
 # To add a new server: append one entry here, then redeploy.
@@ -61,20 +61,43 @@ def _build() -> tuple[list, list]:
     return routes, sub_apps
 
 
-_routes, _sub_apps = _build()
+def build_app() -> Starlette:
+    """Construct the combined Starlette app, mounting every registered server.
+
+    Building the app instantiates every server in ``SERVER_REGISTRY`` (which
+    opens/creates their SQLite databases), so this is done lazily rather than
+    at import time — see the module-level ``__getattr__`` below.
+    """
+    routes, sub_apps = _build()
+
+    @asynccontextmanager
+    async def _lifespan(parent_app):
+        # Starlette's Mount does not propagate sub-app lifespans automatically;
+        # compose them here so each server's background workers start and stop
+        # correctly.
+        async with AsyncExitStack() as stack:
+            for sub_app in sub_apps:
+                await stack.enter_async_context(sub_app.lifespan(sub_app))
+            yield
+
+    return Starlette(lifespan=_lifespan, routes=routes)
 
 
-@asynccontextmanager
-async def _lifespan(parent_app):
-    # Starlette's Mount does not propagate sub-app lifespans automatically;
-    # compose them here so each server's background workers start and stop correctly.
-    async with AsyncExitStack() as stack:
-        for sub_app in _sub_apps:
-            await stack.enter_async_context(sub_app.lifespan(sub_app))
-        yield
+_app_cache: dict[str, Starlette] = {}
 
 
-app = Starlette(lifespan=_lifespan, routes=_routes)
+def __getattr__(name: str) -> Starlette:
+    """Lazily build the ASGI ``app`` on first access (PEP 562).
+
+    Deployment targets reference ``mcp_server_kit.combined:app``; uvicorn's
+    string import triggers this and builds the app at server startup, so a
+    plain ``import mcp_server_kit.combined`` performs no database I/O.
+    """
+    if name == "app":
+        if "app" not in _app_cache:
+            _app_cache["app"] = build_app()
+        return _app_cache["app"]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 if __name__ == "__main__":
@@ -82,4 +105,4 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
-    uvicorn.run("mcp_examples.combined:app", host=args.host, port=args.port)
+    uvicorn.run("mcp_server_kit.combined:app", host=args.host, port=args.port)

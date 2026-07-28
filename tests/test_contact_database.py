@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples.contact_database
+Unit tests for mcp_server_kit.contact_database
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -10,7 +10,7 @@ import tempfile
 
 import pytest
 
-from mcp_examples.contact_database import ContactDatabaseManager
+from mcp_server_kit.contact_database import ContactDatabaseManager
 
 
 class TestContactDatabaseManager:

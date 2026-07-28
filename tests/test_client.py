@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples.client
+Unit tests for mcp_server_kit.client
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mcp_examples.client import MCPClient
+from mcp_server_kit.client import MCPClient
 
 
 class TestMCPClient:
@@ -51,8 +51,8 @@ class TestMCPClient:
         """Test successful tool invocation."""
         mock_result = {"content": [{"type": "text", "text": "Hello, World!"}]}
 
-        with patch("mcp_examples.client.StreamableHttpTransport") as mock_transport_class, \
-             patch("mcp_examples.client.Client") as mock_client_class:
+        with patch("mcp_server_kit.client.StreamableHttpTransport") as mock_transport_class, \
+             patch("mcp_server_kit.client.Client") as mock_client_class:
 
             # Setup mocks
             mock_transport = MagicMock()
@@ -90,8 +90,8 @@ class TestMCPClient:
         ]
 
         for tool_name, arguments in test_cases:
-            with patch("mcp_examples.client.StreamableHttpTransport"), \
-                 patch("mcp_examples.client.Client") as mock_client_class:
+            with patch("mcp_server_kit.client.StreamableHttpTransport"), \
+                 patch("mcp_server_kit.client.Client") as mock_client_class:
 
                 mock_client_instance = MagicMock()
                 mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
@@ -107,8 +107,8 @@ class TestMCPClient:
     @pytest.mark.asyncio
     async def test_call_tool_connection_error(self, client):
         """Test call_tool handles connection errors."""
-        with patch("mcp_examples.client.StreamableHttpTransport"), \
-             patch("mcp_examples.client.Client") as mock_client_class:
+        with patch("mcp_server_kit.client.StreamableHttpTransport"), \
+             patch("mcp_server_kit.client.Client") as mock_client_class:
 
             mock_client_instance = MagicMock()
             mock_client_instance.__aenter__ = AsyncMock(side_effect=ConnectionError("Connection failed"))
@@ -120,8 +120,8 @@ class TestMCPClient:
     @pytest.mark.asyncio
     async def test_call_tool_tool_error(self, client):
         """Test call_tool handles tool execution errors."""
-        with patch("mcp_examples.client.StreamableHttpTransport"), \
-             patch("mcp_examples.client.Client") as mock_client_class:
+        with patch("mcp_server_kit.client.StreamableHttpTransport"), \
+             patch("mcp_server_kit.client.Client") as mock_client_class:
 
             mock_client_instance = MagicMock()
             mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
@@ -179,8 +179,8 @@ class TestEdgeCases:
         """Test call_tool with empty tool name."""
         client = MCPClient("http://test.com/mcp", "key")
 
-        with patch("mcp_examples.client.StreamableHttpTransport"), \
-             patch("mcp_examples.client.Client") as mock_client_class:
+        with patch("mcp_server_kit.client.StreamableHttpTransport"), \
+             patch("mcp_server_kit.client.Client") as mock_client_class:
 
             mock_client_instance = MagicMock()
             mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)

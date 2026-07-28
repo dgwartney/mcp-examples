@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples.contacts
+Unit tests for mcp_server_kit.contacts
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -12,9 +12,9 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from mcp_examples.contact_database import ContactDatabaseManager
-from mcp_examples.database import DatabaseManager
-from mcp_examples.contacts import ContactMCPServer
+from mcp_server_kit.contact_database import ContactDatabaseManager
+from mcp_server_kit.database import DatabaseManager
+from mcp_server_kit.contacts import ContactMCPServer
 
 
 class TestContactMCPServer:
@@ -72,14 +72,14 @@ class TestContactMCPServer:
 
     def test_module_level_server_instance(self):
         """Test that module-level server instance is created."""
-        import mcp_examples.contacts as contacts_module
+        import mcp_server_kit.contacts as contacts_module
 
         assert hasattr(contacts_module, "server")
         assert isinstance(contacts_module.server, ContactMCPServer)
 
     def test_module_level_mcp_instance(self):
         """Test that module-level mcp instance is exposed."""
-        import mcp_examples.contacts as contacts_module
+        import mcp_server_kit.contacts as contacts_module
 
         assert hasattr(contacts_module, "mcp")
         assert contacts_module.mcp == contacts_module.server.mcp

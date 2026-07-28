@@ -6,29 +6,29 @@ The default transport. No API key required. Intended for local development and t
 
 **Greet server:**
 ```bash
-uv run -m mcp_examples.server
+uv run -m mcp_server_kit.server
 ```
 
 **Contact server:**
 ```bash
-uv run -m mcp_examples.contacts
+uv run -m mcp_server_kit.contacts
 ```
 
 **Weather server:**
 ```bash
-OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather
+OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.weather
 ```
 
 **Wikipedia server:**
 ```bash
-uv run -m mcp_examples.wikipedia
+uv run -m mcp_server_kit.wikipedia
 ```
 
 **Twilio server:**
 ```bash
 TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
-  uv run -m mcp_examples.twilio_server
+  uv run -m mcp_server_kit.twilio_server
 ```
 
 > stdio transport does not require an API key and is not accessible remotely. Servers that call external APIs (Weather, Twilio) always require their respective credentials regardless of transport.
@@ -39,29 +39,29 @@ Starts the server as an HTTP endpoint. All requests require a valid `X-API-Key` 
 
 **Greet server:**
 ```bash
-uv run -m mcp_examples.server --transport streamable-http --port 8000
+uv run -m mcp_server_kit.server --transport streamable-http --port 8000
 ```
 
 **Contact server:**
 ```bash
-uv run -m mcp_examples.contacts --transport streamable-http --port 8000
+uv run -m mcp_server_kit.contacts --transport streamable-http --port 8000
 ```
 
 **Weather server:**
 ```bash
-OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather --transport streamable-http --port 8000
+OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.weather --transport streamable-http --port 8000
 ```
 
 **Wikipedia server:**
 ```bash
-uv run -m mcp_examples.wikipedia --transport streamable-http --port 8000
+uv run -m mcp_server_kit.wikipedia --transport streamable-http --port 8000
 ```
 
 **Twilio server:**
 ```bash
 TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
-  uv run -m mcp_examples.twilio_server --transport streamable-http --port 8000
+  uv run -m mcp_server_kit.twilio_server --transport streamable-http --port 8000
 ```
 
 The server endpoint is `http://localhost:8000/mcp`.
@@ -70,13 +70,13 @@ The server endpoint is `http://localhost:8000/mcp`.
 
 **macOS:**
 ```bash
-MCP_DB_PATH=/tmp/mcp_keys.db uv run -m mcp_examples.server --transport streamable-http --port 8000
+MCP_DB_PATH=/tmp/mcp_keys.db uv run -m mcp_server_kit.server --transport streamable-http --port 8000
 ```
 
 **Windows (PowerShell):**
 ```powershell
 $env:MCP_DB_PATH = "C:\data\mcp_keys.db"
-uv run -m mcp_examples.server --transport streamable-http --port 8000
+uv run -m mcp_server_kit.server --transport streamable-http --port 8000
 ```
 
 ## Option 3 — FastMCP CLI
@@ -89,19 +89,19 @@ Shows all registered tools, their parameters, and descriptions without starting 
 
 ```bash
 # Greet server
-uv run fastmcp inspect mcp_examples/server.py
+uv run fastmcp inspect mcp_server_kit/server.py
 
 # Contact server
-uv run fastmcp inspect mcp_examples/contacts.py
+uv run fastmcp inspect mcp_server_kit/contacts.py
 
 # Weather server
-uv run fastmcp inspect mcp_examples/weather.py
+uv run fastmcp inspect mcp_server_kit/weather.py
 
 # Wikipedia server
-uv run fastmcp inspect mcp_examples/wikipedia.py
+uv run fastmcp inspect mcp_server_kit/wikipedia.py
 
 # Twilio server
-uv run fastmcp inspect mcp_examples/twilio_server.py
+uv run fastmcp inspect mcp_server_kit/twilio_server.py
 ```
 
 ### Interactive testing with MCP Inspector
@@ -110,19 +110,19 @@ Starts the server and opens the [MCP Inspector](https://github.com/modelcontextp
 
 ```bash
 # Greet server
-uv run fastmcp dev mcp_examples/server.py
+uv run fastmcp dev mcp_server_kit/server.py
 
 # Contact server
-uv run fastmcp dev mcp_examples/contacts.py
+uv run fastmcp dev mcp_server_kit/contacts.py
 
 # Weather server
-uv run fastmcp dev mcp_examples/weather.py
+uv run fastmcp dev mcp_server_kit/weather.py
 
 # Wikipedia server
-uv run fastmcp dev mcp_examples/wikipedia.py
+uv run fastmcp dev mcp_server_kit/wikipedia.py
 
 # Twilio server
-uv run fastmcp dev mcp_examples/twilio_server.py
+uv run fastmcp dev mcp_server_kit/twilio_server.py
 ```
 
 The Inspector UI opens at `http://localhost:5173` by default.

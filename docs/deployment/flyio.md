@@ -95,7 +95,7 @@ Look for `started` in the Machines table. Your server is live at `https://mcp-ex
 ### Step 7 — Connect a client
 
 ```bash
-uv run -m mcp_examples.cli \
+uv run -m mcp_server_kit.cli \
   --api-key YOUR_API_KEY \
   --url https://mcp-example.fly.dev/mcp
 ```
@@ -133,7 +133,7 @@ One API key (stored in the shared `/data/api_keys.db` volume) authenticates to a
 >
 > Secrets are injected as environment variables at runtime. They are never stored in the image or version control. Any missing credential causes the corresponding tool to return a `ToolError` at call time — the server still starts normally.
 
-To add a new server to the deployment, append one entry to `SERVER_REGISTRY` in `mcp_examples/combined.py` and run `fly deploy`. See [docs/servers.md](../servers.md#combined-server) for details.
+To add a new server to the deployment, append one entry to `SERVER_REGISTRY` in `mcp_server_kit/combined.py` and run `fly deploy`. See [docs/servers.md](../servers.md#combined-server) for details.
 
 ### Verify all servers are running
 

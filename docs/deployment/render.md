@@ -28,8 +28,8 @@ git push -u origin main
    | Setting | Value |
    |---------|-------|
    | **Runtime** | Python 3 |
-   | **Build Command** | `pip install uv && uv sync --frozen` |
-   | **Start Command** | `uv run -m mcp_examples.server --transport streamable-http --port $PORT --host 0.0.0.0` |
+   | **Build Command** | `curl -LsSf https://astral.sh/uv/install.sh \| sh && $HOME/.local/bin/uv sync --frozen` |
+   | **Start Command** | `$HOME/.local/bin/uv run -m mcp_server_kit.server --transport streamable-http --port $PORT --host 0.0.0.0` |
    | **Instance Type** | Free |
 
 4. Click **Advanced** and add these environment variables:
@@ -71,7 +71,7 @@ Copy and save this key. It will not be printed again.
 Your server is now live at `https://YOUR-SERVICE-NAME.onrender.com/mcp`.
 
 ```bash
-uv run -m mcp_examples.cli \
+uv run -m mcp_server_kit.cli \
   --api-key YOUR_API_KEY \
   --url https://YOUR-SERVICE-NAME.onrender.com/mcp
 ```
@@ -83,7 +83,7 @@ uv run -m mcp_examples.cli \
 To run `ContactMCPServer` instead of `GreetMCPServer`, change the Start Command in Render to:
 
 ```
-uv run -m mcp_examples.contacts --transport streamable-http --port $PORT --host 0.0.0.0
+uv run -m mcp_server_kit.contacts --transport streamable-http --port $PORT --host 0.0.0.0
 ```
 
 Both database files will be stored on the persistent `/data` disk using the environment variables already set above.

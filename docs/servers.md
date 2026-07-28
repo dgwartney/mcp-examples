@@ -2,7 +2,7 @@
 
 This project provides five MCP servers built on a shared authenticated base class.
 
-## Greet Server (`mcp_examples/server.py`)
+## Greet Server (`mcp_server_kit/server.py`)
 
 A minimal demonstration server.
 
@@ -18,7 +18,7 @@ A minimal demonstration server.
 |------|-----------|-------------|
 | `greet` | `name: str` | Returns `"Hello, {name}!"` |
 
-## Contact Server (`mcp_examples/contacts.py`)
+## Contact Server (`mcp_server_kit/contacts.py`)
 
 A Salesforce-style CRM server backed by a SQLite contacts database, auto-seeded with 20 Warner Bros. cartoon characters.
 
@@ -48,7 +48,7 @@ A Salesforce-style CRM server backed by a SQLite contacts database, auto-seeded 
 
 Each record includes fields: `Id`, `FirstName`, `LastName`, `Email`, `Phone`, `MobilePhone`, `Title`, `Department`, `AccountId`, `AccountName`, `MailingStreet`, `MailingCity`, `MailingState`, `MailingPostalCode`, `MailingCountry`, and more.
 
-## Weather Server (`mcp_examples/weather.py`)
+## Weather Server (`mcp_server_kit/weather.py`)
 
 Queries the [OpenWeatherMap API](https://openweathermap.org/api) to provide current conditions, multi-day forecasts, and air quality data. Requires a free OpenWeatherMap API key — sign up at https://openweathermap.org/api and set the `OPENWEATHER_API_KEY` environment variable before starting.
 
@@ -80,18 +80,18 @@ All tools accept a `location` string in any of these forms:
 
 ```bash
 # stdio transport (default)
-OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather
+OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.weather
 
 # HTTP transport
-OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather --transport streamable-http --port 8001
+OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.weather --transport streamable-http --port 8001
 
 # Custom database path
-MCP_DB_PATH=/var/data/keys.db OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather
+MCP_DB_PATH=/var/data/keys.db OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.weather
 ```
 
 ---
 
-## Wikipedia Server (`mcp_examples/wikipedia.py`)
+## Wikipedia Server (`mcp_server_kit/wikipedia.py`)
 
 Queries the Wikipedia REST API and MediaWiki Action API to search and retrieve article content. Demonstrates how to build a tool-rich MCP server that calls an external HTTP API.
 
@@ -112,18 +112,18 @@ Queries the Wikipedia REST API and MediaWiki Action API to search and retrieve a
 
 ```bash
 # stdio transport (default)
-uv run -m mcp_examples.wikipedia
+uv run -m mcp_server_kit.wikipedia
 
 # HTTP transport
-uv run -m mcp_examples.wikipedia --transport streamable-http --port 8001
+uv run -m mcp_server_kit.wikipedia --transport streamable-http --port 8001
 
 # Custom database path
-MCP_DB_PATH=/var/data/keys.db uv run -m mcp_examples.wikipedia
+MCP_DB_PATH=/var/data/keys.db uv run -m mcp_server_kit.wikipedia
 ```
 
 ---
 
-## Twilio / SendGrid Server (`mcp_examples/twilio_server.py`)
+## Twilio / SendGrid Server (`mcp_server_kit/twilio_server.py`)
 
 Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) and email via the [SendGrid v3 Mail Send API](https://docs.sendgrid.com/api-reference/mail-send/mail-send). Supports plain-text and HTML email in a single tool call.
 
@@ -154,20 +154,20 @@ Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) a
 # stdio transport (default)
 TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
-  uv run -m mcp_examples.twilio_server
+  uv run -m mcp_server_kit.twilio_server
 
 # HTTP transport
 TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
-  uv run -m mcp_examples.twilio_server --transport streamable-http --port 8003
+  uv run -m mcp_server_kit.twilio_server --transport streamable-http --port 8003
 
 # Custom database path
-MCP_DB_PATH=/var/data/keys.db TWILIO_ACCOUNT_SID=<sid> ... uv run -m mcp_examples.twilio_server
+MCP_DB_PATH=/var/data/keys.db TWILIO_ACCOUNT_SID=<sid> ... uv run -m mcp_server_kit.twilio_server
 ```
 
 ---
 
-## Combined Server (`mcp_examples/combined.py`) {#combined-server}
+## Combined Server (`mcp_server_kit/combined.py`) {#combined-server}
 
 Mounts all five servers into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
 
@@ -189,7 +189,7 @@ All servers share the same `api_keys.db` via the `MCP_DB_PATH` environment varia
 
 ### Adding a new server
 
-Open `mcp_examples/combined.py` and append one line to `SERVER_REGISTRY`:
+Open `mcp_server_kit/combined.py` and append one line to `SERVER_REGISTRY`:
 
 ```python
 SERVER_REGISTRY: list[tuple[str, type]] = [
@@ -210,7 +210,7 @@ Then redeploy with `fly deploy`. No other files need to change.
 OPENWEATHER_API_KEY=<key> \
 TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
-  uv run -m mcp_examples.combined --port 8000
+  uv run -m mcp_server_kit.combined --port 8000
 # → starts all five servers; prints one shared API key
 ```
 
@@ -273,7 +273,7 @@ SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
 
 ```
 mcp-example/
-├── mcp_examples/             # Main Python package
+├── mcp_server_kit/             # Main Python package
 │   ├── __init__.py           # Re-exports all public classes
 │   ├── base.py                # AuthenticatedMCPServer abstract base class
 │   ├── database.py           # DatabaseManager (SQLite API key storage)
@@ -301,7 +301,6 @@ mcp-example/
 │   ├── test_wikipedia.py     # WikipediaMCPServer tests
 │   ├── test_twilio_server.py # TwilioMCPServer tests
 │   └── test_combined.py      # Combined server mounting/lifespan tests
-├── auth.py                   # Standalone middleware example (reference)
 ├── api_keys.db               # SQLite database (generated on first run)
 ├── Dockerfile                # Container image for Fly.io and VPS deployment
 ├── fly.toml                  # Fly.io deployment configuration

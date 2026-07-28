@@ -2,33 +2,33 @@
 
 ## Built-in client (`mcp-client`)
 
-The project includes a minimal Python client (`mcp_examples/cli.py`) that connects to a running HTTP server and calls the `greet` tool. It does **not** support the contact server tools.
+The project includes a minimal Python client (`mcp_server_kit/cli.py`) that connects to a running HTTP server and calls the `greet` tool. It does **not** support the contact server tools.
 
 > To interact with contact server tools (`search_by_last_name`, `search_by_email`, `search_by_account_id`, `authenticate`), use `fastmcp dev` (interactive browser UI) or `curl` (see below).
 
 ### Basic usage
 
 ```bash
-uv run -m mcp_examples.cli --api-key YOUR_API_KEY_HERE
+uv run -m mcp_server_kit.cli --api-key YOUR_API_KEY_HERE
 ```
 
 ### Parameters
 
 ```bash
 # Custom name
-uv run -m mcp_examples.cli --api-key YOUR_API_KEY --name Alice
+uv run -m mcp_server_kit.cli --api-key YOUR_API_KEY --name Alice
 
 # Custom server URL
-uv run -m mcp_examples.cli --api-key YOUR_API_KEY --url http://localhost:8000/mcp
+uv run -m mcp_server_kit.cli --api-key YOUR_API_KEY --url http://localhost:8000/mcp
 
 # All parameters (macOS)
-uv run -m mcp_examples.cli \
+uv run -m mcp_server_kit.cli \
   --api-key YOUR_API_KEY \
   --name Bob \
   --url http://localhost:8000/mcp
 
 # All parameters (Windows PowerShell)
-uv run -m mcp_examples.cli `
+uv run -m mcp_server_kit.cli `
   --api-key YOUR_API_KEY `
   --name Bob `
   --url http://localhost:8000/mcp
@@ -37,7 +37,7 @@ uv run -m mcp_examples.cli `
 ### Example output
 
 ```
-$ uv run -m mcp_examples.cli --api-key QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80 --name Alice
+$ uv run -m mcp_server_kit.cli --api-key QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80 --name Alice
 Hello, Alice!
 ```
 
@@ -57,7 +57,7 @@ The examples below use macOS syntax for multi-line commands — replace `\` with
 
 Start the server first:
 ```bash
-uv run -m mcp_examples.server --transport streamable-http --port 8000
+uv run -m mcp_server_kit.server --transport streamable-http --port 8000
 ```
 
 **Step 1 — Initialize the session:**
@@ -97,7 +97,7 @@ curl -s -X POST http://localhost:8000/mcp \
 
 Start the server first:
 ```bash
-uv run -m mcp_examples.contacts --transport streamable-http --port 8000
+uv run -m mcp_server_kit.contacts --transport streamable-http --port 8000
 ```
 
 Run Steps 1 and 2 from the Greet Server section above (same commands). Then call any contact tool:
@@ -180,7 +180,7 @@ curl -s -X POST http://localhost:8000/mcp \
 
 Start the server first:
 ```bash
-OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather --transport streamable-http --port 8000
+OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.weather --transport streamable-http --port 8000
 ```
 
 Run Steps 1 and 2 from the Greet Server section above (same commands). Then call any weather tool:
@@ -277,7 +277,7 @@ Start the server first:
 ```bash
 TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
-  uv run -m mcp_examples.twilio_server --transport streamable-http --port 8000
+  uv run -m mcp_server_kit.twilio_server --transport streamable-http --port 8000
 ```
 
 Run Steps 1 and 2 from the Greet Server section above (same commands). Then call any messaging tool:

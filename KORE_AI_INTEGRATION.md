@@ -33,13 +33,13 @@ same `AuthenticatedMCPServer` base class:
 
 | Server | Module | Tools |
 |--------|--------|-------|
-| Greet | `mcp_examples/server.py` | `greet` |
-| Contact | `mcp_examples/contacts.py` | `search_by_last_name`, `search_by_email`, `search_by_account_id`, `authenticate` |
-| Wikipedia | `mcp_examples/wikipedia.py` | `search_pages`, `search_titles`, `get_page_summary`, `get_related_pages` |
-| Weather | `mcp_examples/weather.py` | `get_current_weather`, `get_forecast`, `get_air_quality` |
-| Twilio | `mcp_examples/twilio_server.py` | `send_sms`, `send_email` |
+| Greet | `mcp_server_kit/server.py` | `greet` |
+| Contact | `mcp_server_kit/contacts.py` | `search_by_last_name`, `search_by_email`, `search_by_account_id`, `authenticate` |
+| Wikipedia | `mcp_server_kit/wikipedia.py` | `search_pages`, `search_titles`, `get_page_summary`, `get_related_pages` |
+| Weather | `mcp_server_kit/weather.py` | `get_current_weather`, `get_forecast`, `get_air_quality` |
+| Twilio | `mcp_server_kit/twilio_server.py` | `send_sms`, `send_email` |
 
-`mcp_examples/combined.py` mounts all five into a single deployable Starlette app, each
+`mcp_server_kit/combined.py` mounts all five into a single deployable Starlette app, each
 at its own URL path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`,
 `/twilio/mcp`) sharing one API key store — this is the recommended way to deploy to Kore
 AI, since it exposes every tool under one base URL with one API key. You can also run any
@@ -81,7 +81,7 @@ For the impatient, here's the fastest path to integration using the combined ser
 uv sync
 
 # 2. Start the combined server (mounts all five servers on one port)
-uv run -m mcp_examples.combined --port 8000
+uv run -m mcp_server_kit.combined --port 8000
 
 # 3. Note the API key printed on first run
 # Output: Generated default API key: QBMDHIqbf_qQV8uW7wJ6sMNDAj2q7VoFS_u9IGVqX80
@@ -95,7 +95,7 @@ ngrok http 8000
 If you only need one server, run it standalone instead:
 
 ```bash
-uv run -m mcp_examples.server --transport streamable-http --port 8000
+uv run -m mcp_server_kit.server --transport streamable-http --port 8000
 ```
 
 Continue reading for detailed deployment options and configuration steps.
@@ -128,7 +128,7 @@ brew install ngrok
 #### Step 2: Start the Combined Server
 
 ```bash
-uv run -m mcp_examples.combined --port 8000
+uv run -m mcp_server_kit.combined --port 8000
 ```
 
 **On first run**, the server will generate and print an API key:
@@ -181,10 +181,10 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock ./
-COPY mcp_examples/ mcp_examples/
+COPY mcp_server_kit/ mcp_server_kit/
 RUN uv sync --frozen
 EXPOSE 8000
-CMD ["uv", "run", "-m", "mcp_examples.combined", "--port", "8000", "--host", "0.0.0.0"]
+CMD ["uv", "run", "-m", "mcp_server_kit.combined", "--port", "8000", "--host", "0.0.0.0"]
 ```
 
 (See the actual `Dockerfile` in the repo root — it may have evolved since this guide was
@@ -238,11 +238,11 @@ This repository already includes a working `Procfile` at the project root, which
 the single Greet server as a simple starting point:
 
 ```
-web: uv run -m mcp_examples.server --transport streamable-http --port $PORT --host 0.0.0.0
+web: uv run -m mcp_server_kit.server --transport streamable-http --port $PORT --host 0.0.0.0
 ```
 
 If you want the combined server (all five, one API key) on Railway/Render instead, edit
-the `Procfile` to `web: uv run -m mcp_examples.combined --port $PORT --host 0.0.0.0`, or
+the `Procfile` to `web: uv run -m mcp_server_kit.combined --port $PORT --host 0.0.0.0`, or
 use the Docker deployment option above, which already runs the combined server by default.
 
 1. **Deploy (Railway)**:
@@ -271,7 +271,7 @@ including secrets configuration for the Weather and Twilio servers.
 ## Configuring in Kore AI
 
 Once your combined server is deployed and accessible via HTTPS, configure each server you
-need as a separate MCP Tool in Kore AI. Every entry in `mcp_examples/combined.py`'s
+need as a separate MCP Tool in Kore AI. Every entry in `mcp_server_kit/combined.py`'s
 `SERVER_REGISTRY` gets its own `/<prefix>/mcp` URL and its own set of tools — repeat the
 steps below once per server you want to expose.
 
@@ -293,7 +293,7 @@ Fill in the configuration form, one server at a time. For example, for the Conta
 
 | Field | Value | Example |
 |-------|-------|---------|
-| **Name** | `mcp-examples-contacts` | Unique identifier for this server's tools |
+| **Name** | `mcp-server-kit-contacts` | Unique identifier for this server's tools |
 | **Description** | `Mock CRM contact search and auth tools` | Brief description of capabilities |
 | **Server URL** | Your deployment base URL + the server's prefix + `/mcp` | `https://abc123.ngrok.app/contacts/mcp` |
 
@@ -321,7 +321,7 @@ this once and reuse the same key for every server you register.
 ### Step 6: Select Tools
 
 Check the tools you want and click **Add Selected**. Kore AI automatically prefixes tool
-names with the server name you chose in Step 3 (e.g. `mcp-examples-contacts__search_by_last_name`).
+names with the server name you chose in Step 3 (e.g. `mcp-server-kit-contacts__search_by_last_name`).
 
 ### Step 7: Save Configuration
 
@@ -336,7 +336,7 @@ for each additional server you want to expose.
 
 1. Open your agent in **Preview** mode
 2. Navigate to the **Tools** section
-3. Find one of your registered tools (e.g. `mcp-examples-greet__greet`)
+3. Find one of your registered tools (e.g. `mcp-server-kit-greet__greet`)
 4. Click **Run Sample Execution**
 
 #### Sample Test Input (greet)
@@ -560,11 +560,11 @@ Every server in this repo follows the same pattern: subclass `AuthenticatedMCPSe
 register tools in `_register_tools()` (see [docs/extending.md](docs/extending.md) for the
 full walkthrough, including a checklist for adding an entirely new server).
 
-For a minimal example to copy from, see `mcp_examples/_template.py` — the smallest
+For a minimal example to copy from, see `mcp_server_kit/_template.py` — the smallest
 possible server, with a single placeholder tool and no domain logic.
 
 To add a tool to an existing server, edit its `_register_tools()` method, e.g. in
-`mcp_examples/server.py`:
+`mcp_server_kit/server.py`:
 
 ```python
 def _register_tools(self) -> None:

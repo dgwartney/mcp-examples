@@ -65,11 +65,11 @@ To wipe all contacts and re-seed with the original 20 Warner Bros. characters, d
 **macOS:**
 ```bash
 rm contacts.db
-uv run -m mcp_examples.contacts
+uv run -m mcp_server_kit.contacts
 ```
 
 **Windows (PowerShell):**
 ```powershell
 del contacts.db
-uv run -m mcp_examples.contacts
+uv run -m mcp_server_kit.contacts
 ```

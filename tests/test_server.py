@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples.server
+Unit tests for mcp_server_kit.server
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -18,9 +18,9 @@ from starlette.responses import Response
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from mcp_examples.database import DatabaseManager
-from mcp_examples.middleware import ApiKeyMiddleware
-from mcp_examples.server import GreetMCPServer
+from mcp_server_kit.database import DatabaseManager
+from mcp_server_kit.middleware import ApiKeyMiddleware
+from mcp_server_kit.server import GreetMCPServer
 
 
 class TestGreetMCPServer:
@@ -62,34 +62,34 @@ class TestGreetMCPServer:
 
     def test_module_level_server_instance(self):
         """Test that module-level server instance is created."""
-        import mcp_examples.server as server_module
+        import mcp_server_kit.server as server_module
 
         assert hasattr(server_module, 'server')
         assert isinstance(server_module.server, GreetMCPServer)
 
     def test_module_level_mcp_instance(self):
         """Test that module-level mcp instance is exposed."""
-        import mcp_examples.server as server_module
+        import mcp_server_kit.server as server_module
 
         assert hasattr(server_module, 'mcp')
         assert server_module.mcp == server_module.server.mcp
 
 
 class TestPackageInit:
-    """Tests for mcp_examples.__init__ lazy import mechanism."""
+    """Tests for mcp_server_kit.__init__ lazy import mechanism."""
 
     def test_lazy_import_returns_class(self):
         """Accessing WikipediaMCPServer via the package triggers __getattr__."""
-        import mcp_examples
-        cls = mcp_examples.WikipediaMCPServer
-        from mcp_examples.wikipedia import WikipediaMCPServer
+        import mcp_server_kit
+        cls = mcp_server_kit.WikipediaMCPServer
+        from mcp_server_kit.wikipedia import WikipediaMCPServer
         assert cls is WikipediaMCPServer
 
     def test_unknown_attribute_raises_attribute_error(self):
         """Accessing an unknown attribute raises AttributeError."""
-        import mcp_examples
+        import mcp_server_kit
         with pytest.raises(AttributeError):
-            _ = mcp_examples.NonExistentClass
+            _ = mcp_server_kit.NonExistentClass
 
 
 class TestIntegration:

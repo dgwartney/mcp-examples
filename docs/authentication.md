@@ -11,7 +11,7 @@ When the server starts in HTTP mode, every incoming request must include an `X-A
 On first run, the server automatically creates `api_keys.db`, generates a secure random API key, and prints it to the terminal:
 
 ```bash
-uv run -m mcp_examples.server --transport streamable-http --port 8000
+uv run -m mcp_server_kit.server --transport streamable-http --port 8000
 ```
 
 ```
@@ -42,7 +42,7 @@ Pass the key in the `X-API-Key` header on every request.
 
 **Built-in client:**
 ```bash
-uv run -m mcp_examples.cli --api-key YOUR_API_KEY --url http://localhost:8000/mcp
+uv run -m mcp_server_kit.cli --api-key YOUR_API_KEY --url http://localhost:8000/mcp
 ```
 
 **curl:**

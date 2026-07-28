@@ -5,9 +5,12 @@ Author:
     David Gwartney <david.gwartney@gmail.com>
 """
 
+import logging
 import secrets
 import sqlite3
 from typing import Optional
+
+_logger = logging.getLogger(__name__)
 
 
 class DatabaseManager:
@@ -31,23 +34,30 @@ class DatabaseManager:
         """
         self.db_path = db_path
 
-    def init_db(self) -> None:
+    def init_db(self) -> Optional[str]:
         """
         Initialize the database schema and create a default API key.
 
         Creates the api_keys table if it doesn't exist. If the table is empty,
-        generates a cryptographically secure random API key using secrets.token_urlsafe()
-        and inserts it as the default key. The generated key is printed to stdout
-        on first run.
+        generates a cryptographically secure random API key using
+        ``secrets.token_urlsafe()`` and inserts it as the default key. The
+        generated key is emitted via the ``logging`` module (logger
+        ``mcp_server_kit.database``) at INFO level rather than printed to
+        stdout, so importing a server module never leaks a secret.
 
         The table schema:
             - id: INTEGER PRIMARY KEY AUTOINCREMENT
             - key: TEXT UNIQUE NOT NULL
 
+        Returns:
+            Optional[str]: The newly generated default key if the table was
+            empty, otherwise ``None``.
+
         Raises:
             sqlite3.Error: If database operations fail.
         """
         conn = sqlite3.connect(self.db_path)
+        generated_key: Optional[str] = None
         try:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS api_keys "
@@ -55,12 +65,15 @@ class DatabaseManager:
             )
             row = conn.execute("SELECT COUNT(*) FROM api_keys").fetchone()
             if row[0] == 0:
-                default_key = secrets.token_urlsafe(32)
-                conn.execute("INSERT INTO api_keys (key) VALUES (?)", (default_key,))
-                print(f"Generated default API key: {default_key}")
+                generated_key = secrets.token_urlsafe(32)
+                conn.execute(
+                    "INSERT INTO api_keys (key) VALUES (?)", (generated_key,)
+                )
+                _logger.info("Generated default API key: %s", generated_key)
             conn.commit()
         finally:
             conn.close()
+        return generated_key
 
     def validate_key(self, api_key: Optional[str]) -> bool:
         """

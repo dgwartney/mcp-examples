@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples.weather
+Unit tests for mcp_server_kit.weather
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -13,8 +13,8 @@ import httpx
 import pytest
 from fastmcp.exceptions import ToolError
 
-from mcp_examples.database import DatabaseManager
-from mcp_examples.weather import WeatherMCPServer, _fmt_date, _fmt_utc
+from mcp_server_kit.database import DatabaseManager
+from mcp_server_kit.weather import WeatherMCPServer, _fmt_date, _fmt_utc
 
 
 def _tool_fn(server, name):
@@ -137,11 +137,11 @@ class TestWeatherMCPServerInit:
         assert s._api_key == "param-key"
 
     def test_module_level_server_instance(self):
-        import mcp_examples.weather as m
+        import mcp_server_kit.weather as m
         assert isinstance(m.server, WeatherMCPServer)
 
     def test_module_level_mcp_instance(self):
-        import mcp_examples.weather as m
+        import mcp_server_kit.weather as m
         assert m.mcp is m.server.mcp
 
 

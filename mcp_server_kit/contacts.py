@@ -10,10 +10,10 @@ Author:
 
 Example:
     Run the server directly (stdio transport):
-        $ uv run -m mcp_examples.contacts
+        $ uv run -m mcp_server_kit.contacts
 
     Run as HTTP server:
-        $ uv run -m mcp_examples.contacts --transport streamable-http --port 8000
+        $ uv run -m mcp_server_kit.contacts --transport streamable-http --port 8000
 """
 
 import os
@@ -21,8 +21,8 @@ from typing import Optional
 
 from fastmcp.exceptions import ToolError
 
-from mcp_examples.base import AuthenticatedMCPServer
-from mcp_examples.contact_database import ContactDatabaseManager
+from mcp_server_kit.base import AuthenticatedMCPServer, lazy_module_instances
+from mcp_server_kit.contact_database import ContactDatabaseManager
 
 
 class ContactMCPServer(AuthenticatedMCPServer):
@@ -121,9 +121,9 @@ class ContactMCPServer(AuthenticatedMCPServer):
             return result
 
 
-# Module-level instances
-server = ContactMCPServer()
-mcp = server.mcp  # FastMCP CLI expects a module-level 'mcp' object
+# Lazy module-level ``server`` / ``mcp`` — built on first attribute access, not
+# on import, so ``import mcp_server_kit.contacts`` performs no database I/O.
+__getattr__ = lazy_module_instances(ContactMCPServer)
 
 if __name__ == "__main__":
-    server.main()
+    ContactMCPServer().main()

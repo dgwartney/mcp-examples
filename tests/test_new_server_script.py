@@ -2,7 +2,7 @@
 Integration tests for scripts/new_server.py.
 
 Runs the scaffold script against a temporary copy of the repository's
-mcp_examples/ and tests/ directories so the real repo is never touched.
+mcp_server_kit/ and tests/ directories so the real repo is never touched.
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -21,8 +21,8 @@ SCRIPT_PATH = REPO_ROOT / "scripts" / "new_server.py"
 
 @pytest.fixture
 def scaffold_env(tmp_path, monkeypatch):
-    """Copy mcp_examples/, tests/, and scripts/ into a temp repo root."""
-    for name in ("mcp_examples", "tests", "scripts"):
+    """Copy mcp_server_kit/, tests/, and scripts/ into a temp repo root."""
+    for name in ("mcp_server_kit", "tests", "scripts"):
         shutil.copytree(REPO_ROOT / name, tmp_path / name)
     return tmp_path
 
@@ -41,7 +41,7 @@ class TestNewServerScript:
     def test_creates_module_and_test_files(self, scaffold_env):
         result = _run_scaffold(scaffold_env, "Inventory")
         assert result.returncode == 0, result.stderr
-        assert (scaffold_env / "mcp_examples" / "inventory.py").exists()
+        assert (scaffold_env / "mcp_server_kit" / "inventory.py").exists()
         assert (scaffold_env / "tests" / "test_inventory.py").exists()
 
     def test_generated_module_imports_cleanly(self, scaffold_env):
@@ -52,7 +52,7 @@ class TestNewServerScript:
         check = subprocess.run(
             [
                 sys.executable, "-c",
-                "from mcp_examples.inventory import InventoryMCPServer, server, mcp; "
+                "from mcp_server_kit.inventory import InventoryMCPServer, server, mcp; "
                 "assert isinstance(server, InventoryMCPServer); "
                 "assert mcp is server.mcp",
             ],
@@ -64,15 +64,15 @@ class TestNewServerScript:
 
     def test_combined_py_registry_updated(self, scaffold_env):
         _run_scaffold(scaffold_env, "Inventory")
-        content = (scaffold_env / "mcp_examples" / "combined.py").read_text()
-        assert "from mcp_examples.inventory import InventoryMCPServer" in content
+        content = (scaffold_env / "mcp_server_kit" / "combined.py").read_text()
+        assert "from mcp_server_kit.inventory import InventoryMCPServer" in content
         assert '("inventory", InventoryMCPServer)' in content
 
     def test_init_py_registry_updated(self, scaffold_env):
         _run_scaffold(scaffold_env, "Inventory")
-        content = (scaffold_env / "mcp_examples" / "__init__.py").read_text()
+        content = (scaffold_env / "mcp_server_kit" / "__init__.py").read_text()
         assert '"InventoryMCPServer",' in content
-        assert '"InventoryMCPServer": "mcp_examples.inventory",' in content
+        assert '"InventoryMCPServer": "mcp_server_kit.inventory",' in content
 
     def test_refuses_to_overwrite_existing_module(self, scaffold_env):
         _run_scaffold(scaffold_env, "Inventory")
@@ -93,10 +93,26 @@ class TestNewServerScript:
         )
         assert result.returncode != 0
 
+    def test_generated_module_imports_without_creating_db(self, scaffold_env):
+        """Plain ``import`` of a scaffolded module must not touch the database."""
+        _run_scaffold(scaffold_env, "Inventory")
+        check = subprocess.run(
+            [
+                sys.executable, "-c",
+                "import mcp_server_kit.inventory; "
+                "import glob, sys; "
+                "sys.exit(1 if glob.glob('*.db') else 0)",
+            ],
+            cwd=scaffold_env,
+            capture_output=True,
+            text=True,
+        )
+        assert check.returncode == 0, f"import created a .db file: {check.stderr}"
+
     def test_multi_word_name_converted_to_snake_case(self, scaffold_env):
         result = _run_scaffold(scaffold_env, "OrderTracking")
         assert result.returncode == 0, result.stderr
-        assert (scaffold_env / "mcp_examples" / "order_tracking.py").exists()
+        assert (scaffold_env / "mcp_server_kit" / "order_tracking.py").exists()
         assert (scaffold_env / "tests" / "test_order_tracking.py").exists()
-        content = (scaffold_env / "mcp_examples" / "order_tracking.py").read_text()
+        content = (scaffold_env / "mcp_server_kit" / "order_tracking.py").read_text()
         assert "class OrderTrackingMCPServer" in content

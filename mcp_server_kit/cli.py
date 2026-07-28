@@ -6,16 +6,16 @@ Author:
 
 Example:
     Basic usage with required API key:
-        $ python -m mcp_examples.cli --api-key YOUR_API_KEY
+        $ python -m mcp_server_kit.cli --api-key YOUR_API_KEY
 
     Custom name and server URL:
-        $ python -m mcp_examples.cli --api-key YOUR_API_KEY --name Alice --url http://localhost:8000/mcp
+        $ python -m mcp_server_kit.cli --api-key YOUR_API_KEY --name Alice --url http://localhost:8000/mcp
 """
 
 import argparse
 import asyncio
 
-from mcp_examples.client import MCPClient
+from mcp_server_kit.client import MCPClient
 
 
 class MCPClientApp:

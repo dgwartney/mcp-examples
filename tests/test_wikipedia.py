@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples.wikipedia
+Unit tests for mcp_server_kit.wikipedia
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -14,8 +14,8 @@ import httpx
 import pytest
 from fastmcp.exceptions import ToolError
 
-from mcp_examples.database import DatabaseManager
-from mcp_examples.wikipedia import WikipediaMCPServer
+from mcp_server_kit.database import DatabaseManager
+from mcp_server_kit.wikipedia import WikipediaMCPServer
 
 
 def _tool_fn(server, name):
@@ -89,11 +89,11 @@ class TestWikipediaMCPServerInit:
         assert isinstance(s.db_manager, DatabaseManager)
 
     def test_module_level_server_instance(self):
-        import mcp_examples.wikipedia as m
+        import mcp_server_kit.wikipedia as m
         assert isinstance(m.server, WikipediaMCPServer)
 
     def test_module_level_mcp_instance(self):
-        import mcp_examples.wikipedia as m
+        import mcp_server_kit.wikipedia as m
         assert m.mcp is m.server.mcp
 
 

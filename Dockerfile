@@ -11,7 +11,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Copy dependency files first for layer caching
 COPY pyproject.toml uv.lock ./
-COPY mcp_examples/ mcp_examples/
+COPY mcp_server_kit/ mcp_server_kit/
 
 # Install dependencies
 RUN uv sync --frozen --no-dev
@@ -21,4 +21,4 @@ RUN mkdir -p /data
 
 EXPOSE 8000
 
-CMD ["uv", "run", "-m", "mcp_examples.combined", "--port", "8000", "--host", "0.0.0.0"]
+CMD ["uv", "run", "-m", "mcp_server_kit.combined", "--port", "8000", "--host", "0.0.0.0"]

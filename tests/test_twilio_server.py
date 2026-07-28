@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples.twilio_server
+Unit tests for mcp_server_kit.twilio_server
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -13,8 +13,8 @@ import httpx
 import pytest
 from fastmcp.exceptions import ToolError
 
-from mcp_examples.database import DatabaseManager
-from mcp_examples.twilio_server import TwilioMCPServer
+from mcp_server_kit.database import DatabaseManager
+from mcp_server_kit.twilio_server import TwilioMCPServer
 
 
 def _tool_fn(server, name):
@@ -100,11 +100,11 @@ class TestTwilioMCPServerInit:
         assert server._sendgrid_from_email == "from@example.com"
 
     def test_module_level_server_instance(self):
-        import mcp_examples.twilio_server as m
+        import mcp_server_kit.twilio_server as m
         assert isinstance(m.server, TwilioMCPServer)
 
     def test_module_level_mcp_instance(self):
-        import mcp_examples.twilio_server as m
+        import mcp_server_kit.twilio_server as m
         assert m.mcp is m.server.mcp
 
 

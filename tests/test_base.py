@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples.base
+Unit tests for mcp_server_kit.base
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -11,9 +11,9 @@ from unittest.mock import patch
 
 import pytest
 
-from mcp_examples.base import AuthenticatedMCPServer
-from mcp_examples.database import DatabaseManager
-from mcp_examples.middleware import ApiKeyMiddleware
+from mcp_server_kit.base import AuthenticatedMCPServer
+from mcp_server_kit.database import DatabaseManager
+from mcp_server_kit.middleware import ApiKeyMiddleware
 
 
 class StubMCPServer(AuthenticatedMCPServer):

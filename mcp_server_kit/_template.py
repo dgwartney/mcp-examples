@@ -13,12 +13,12 @@ Author: <your name>
 
 Example:
     Run directly (stdio transport):
-        $ uv run -m mcp_examples._template
+        $ uv run -m mcp_server_kit._template
     Run as HTTP:
-        $ uv run -m mcp_examples._template --transport streamable-http --port 8010
+        $ uv run -m mcp_server_kit._template --transport streamable-http --port 8010
 """
 
-from mcp_examples.base import AuthenticatedMCPServer
+from mcp_server_kit.base import AuthenticatedMCPServer, lazy_module_instances
 
 
 class TemplateMCPServer(AuthenticatedMCPServer):
@@ -31,16 +31,17 @@ class TemplateMCPServer(AuthenticatedMCPServer):
             return f"You said: {text}"
 
 
-# Module-level instances (required by FastMCP CLI and combined.py mounting)
-server = TemplateMCPServer()
-mcp = server.mcp
-
-# Add more tools here using the bare @mcp.tool() decorator, e.g.:
+# Lazy module-level ``server`` / ``mcp`` — built on first attribute access, not
+# on import, so ``import mcp_server_kit._template`` performs no database I/O.
+# The FastMCP CLI and combined.py mounting still find ``server``/``mcp`` here.
 #
-#     @mcp.tool()
+# Add more tools inside ``_register_tools()`` above, e.g.:
+#
+#     @self.mcp.tool(description="Reverse a string")
 #     def reverse(text: str) -> str:
 #         """Return the input string reversed."""
 #         return text[::-1]
+__getattr__ = lazy_module_instances(TemplateMCPServer)
 
 if __name__ == "__main__":
-    server.main()
+    TemplateMCPServer().main()

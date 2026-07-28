@@ -9,16 +9,16 @@ Author:
 
 Example:
     Run the server directly (stdio transport):
-        $ uv run -m mcp_examples.server
+        $ uv run -m mcp_server_kit.server
 
     Run as HTTP server:
-        $ uv run -m mcp_examples.server --transport streamable-http --port 8000
+        $ uv run -m mcp_server_kit.server --transport streamable-http --port 8000
 
     Run with custom database path:
-        $ MCP_DB_PATH=/var/data/keys.db uv run -m mcp_examples.server
+        $ MCP_DB_PATH=/var/data/keys.db uv run -m mcp_server_kit.server
 """
 
-from mcp_examples.base import AuthenticatedMCPServer
+from mcp_server_kit.base import AuthenticatedMCPServer, lazy_module_instances
 
 
 class GreetMCPServer(AuthenticatedMCPServer):
@@ -53,16 +53,10 @@ class GreetMCPServer(AuthenticatedMCPServer):
 # Backward-compatible alias
 MCPServer = GreetMCPServer
 
-# Module-level instances
-server = GreetMCPServer()
-mcp = server.mcp  # FastMCP CLI expects a module-level 'mcp' object
-
-# Add your own tools here using the bare @mcp.tool() decorator, e.g.:
-#
-#     @mcp.tool()
-#     def reverse(text: str) -> str:
-#         """Return the input string reversed."""
-#         return text[::-1]
+# Lazy module-level ``server`` / ``mcp`` — built on first attribute access, not
+# on import, so ``import mcp_server_kit.server`` performs no database I/O.
+# (Add new tools inside ``_register_tools()`` above, not at module scope.)
+__getattr__ = lazy_module_instances(GreetMCPServer)
 
 if __name__ == "__main__":
-    server.main()
+    GreetMCPServer().main()

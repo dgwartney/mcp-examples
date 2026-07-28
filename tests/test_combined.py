@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples.combined
+Unit tests for mcp_server_kit.combined
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -7,12 +7,13 @@ Author:
 
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.testclient import TestClient
 
-import mcp_examples.combined as combined
+import mcp_server_kit.combined as combined
 
 
 class FakeServer:
@@ -104,22 +105,48 @@ class TestApp:
             assert resp.status_code == 404
 
 
+class TestCombinedEndpoints:
+    """Integration test (plan E3): every registered server is actually mounted.
+
+    Catches the most common extension mistake — adding a server module but
+    forgetting to register it in SERVER_REGISTRY — by driving the real combined
+    app in-process and confirming each prefix responds (401 = mounted + auth
+    guarded, vs 404 = not mounted).
+    """
+
+    @pytest.mark.asyncio
+    async def test_every_registered_server_is_reachable(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)  # keep generated SQLite files out of the repo
+        app = combined.build_app()
+        body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+
+        async with app.router.lifespan_context(app):
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+                for prefix, _ in combined.SERVER_REGISTRY:
+                    resp = await client.post(f"/{prefix}/mcp", json=body)
+                    assert resp.status_code == 401, f"/{prefix}/mcp not reachable"
+                resp = await client.post("/not-registered/mcp", json=body)
+                assert resp.status_code == 404
+
+
 class TestLifespan:
 
     @pytest.mark.asyncio
-    async def test_lifespan_enters_and_exits_all_sub_app_lifespans(self):
+    async def test_lifespan_enters_and_exits_all_sub_app_lifespans(self, monkeypatch):
         sub_app_1, sub_app_2 = MagicMock(), MagicMock()
         for sub_app in (sub_app_1, sub_app_2):
             sub_app.lifespan.return_value.__aenter__.return_value = None
             sub_app.lifespan.return_value.__aexit__.return_value = None
 
-        original_sub_apps = combined._sub_apps
-        combined._sub_apps = [sub_app_1, sub_app_2]
-        try:
-            async with combined._lifespan(MagicMock()):
-                pass
-        finally:
-            combined._sub_apps = original_sub_apps
+        routes = [Mount("/one", app=sub_app_1), Mount("/two", app=sub_app_2)]
+        monkeypatch.setattr(
+            combined, "_build", lambda: (routes, [sub_app_1, sub_app_2])
+        )
+
+        app = combined.build_app()
+        async with app.router.lifespan_context(app):
+            pass
 
         for sub_app in (sub_app_1, sub_app_2):
             sub_app.lifespan.assert_called_once_with(sub_app)

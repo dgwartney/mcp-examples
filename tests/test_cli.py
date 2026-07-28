@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples.cli
+Unit tests for mcp_server_kit.cli
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mcp_examples.cli import MCPClientApp
+from mcp_server_kit.cli import MCPClientApp
 
 
 class TestMCPClientApp:
@@ -111,7 +111,7 @@ class TestMCPClientApp:
         test_args = ["--api-key", "test-key", "--name", "Alice"]
 
         with patch.object(sys, 'argv', ['my_client.py'] + test_args), \
-             patch('mcp_examples.cli.MCPClient') as mock_client_class, \
+             patch('mcp_server_kit.cli.MCPClient') as mock_client_class, \
              patch('asyncio.run') as mock_asyncio_run:
 
             mock_client_instance = MagicMock()
@@ -134,7 +134,7 @@ class TestMCPClientApp:
         ]
 
         with patch.object(sys, 'argv', ['my_client.py'] + test_args), \
-             patch('mcp_examples.cli.MCPClient') as mock_client_class, \
+             patch('mcp_server_kit.cli.MCPClient') as mock_client_class, \
              patch('asyncio.run') as mock_asyncio_run:
 
             mock_client_instance = MagicMock()
@@ -154,7 +154,7 @@ class TestMCPClientApp:
         test_args = ["--api-key", "test-key"]
 
         with patch.object(sys, 'argv', ['my_client.py'] + test_args), \
-             patch('mcp_examples.cli.MCPClient') as mock_client_class, \
+             patch('mcp_server_kit.cli.MCPClient') as mock_client_class, \
              patch('asyncio.run') as mock_asyncio_run:
 
             mock_client_instance = MagicMock()
@@ -179,7 +179,7 @@ class TestMCPClientApp:
         ]
 
         with patch.object(sys, 'argv', ['my_client.py'] + test_args), \
-             patch('mcp_examples.cli.MCPClient') as mock_client_class, \
+             patch('mcp_server_kit.cli.MCPClient') as mock_client_class, \
              patch('asyncio.run') as mock_asyncio_run:
 
             mock_client_instance = MagicMock()
@@ -207,7 +207,7 @@ class TestIntegration:
         ]
 
         with patch.object(sys, 'argv', ['my_client.py'] + test_args), \
-             patch('mcp_examples.cli.MCPClient') as mock_client_class, \
+             patch('mcp_server_kit.cli.MCPClient') as mock_client_class, \
              patch('asyncio.run'):
 
             mock_client_instance = MagicMock()
@@ -224,8 +224,8 @@ class TestIntegration:
 
     def test_main_entry_point(self):
         """Test that the module can be run as main."""
-        import mcp_examples.cli
+        import mcp_server_kit.cli
 
         # The app should be runnable
-        assert callable(getattr(mcp_examples.cli.MCPClientApp, 'run'))
-        assert callable(mcp_examples.cli.main)
+        assert callable(getattr(mcp_server_kit.cli.MCPClientApp, 'run'))
+        assert callable(mcp_server_kit.cli.main)

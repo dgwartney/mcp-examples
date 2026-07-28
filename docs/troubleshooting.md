@@ -4,7 +4,7 @@
 
 **Cause:** Headers not passed correctly to the transport layer.
 
-**Solution:** Ensure you're using `StreamableHttpTransport` with the headers parameter (already implemented in `mcp_examples/client.py`).
+**Solution:** Ensure you're using `StreamableHttpTransport` with the headers parameter (already implemented in `mcp_server_kit/client.py`).
 
 ## "Error: Unauthorized: Invalid or missing API Key"
 
@@ -22,7 +22,7 @@
 
 **Cause:** FastMCP CLI expects a module-level `mcp` variable.
 
-**Solution:** Already handled in `mcp_examples/server.py` with:
+**Solution:** Already handled in `mcp_server_kit/server.py` with:
 ```python
 server = GreetMCPServer()
 mcp = server.mcp

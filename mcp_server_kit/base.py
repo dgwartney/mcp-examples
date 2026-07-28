@@ -15,13 +15,13 @@ Environment Variables:
 import argparse
 import os
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Callable, Optional
 
 from fastmcp import FastMCP
 from starlette.middleware import Middleware as StarletteMiddleware
 
-from mcp_examples.database import DatabaseManager
-from mcp_examples.middleware import ApiKeyMiddleware
+from mcp_server_kit.database import DatabaseManager
+from mcp_server_kit.middleware import ApiKeyMiddleware
 
 
 class AuthenticatedMCPServer(ABC):
@@ -122,3 +122,44 @@ class AuthenticatedMCPServer(ABC):
             self.run(
                 transport=args.transport, host=args.host, port=args.port
             )
+
+
+def lazy_module_instances(
+    server_factory: Callable[[], "AuthenticatedMCPServer"],
+) -> Callable[[str], object]:
+    """Build a module-level ``__getattr__`` that lazily exposes ``server``/``mcp``.
+
+    Server modules historically defined module-level ``server`` and ``mcp``
+    objects (the FastMCP CLI and older imports expect a module-level ``mcp``).
+    Constructing them at import time, however, instantiates the server —
+    which opens/creates the SQLite database and may log a generated key —
+    merely because the module was imported. That makes the package unsafe to
+    ``import`` as a library.
+
+    This returns a PEP 562 module ``__getattr__`` that constructs the server
+    on *first access* of ``server`` or ``mcp`` and caches it, so a plain
+    ``import mcp_server_kit.<module>`` performs no database or network I/O.
+
+    Usage in a server module::
+
+        __getattr__ = lazy_module_instances(GreetMCPServer)
+
+    Args:
+        server_factory: Zero-argument callable returning a server instance
+            (typically the server class itself).
+
+    Returns:
+        A ``__getattr__(name)`` function to assign at module scope.
+    """
+    cache: dict[str, object] = {}
+
+    def __getattr__(name: str) -> object:
+        if name in ("server", "mcp"):
+            if "server" not in cache:
+                srv = server_factory()
+                cache["server"] = srv
+                cache["mcp"] = srv.mcp
+            return cache[name]
+        raise AttributeError(f"module has no attribute {name!r}")
+
+    return __getattr__

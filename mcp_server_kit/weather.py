@@ -19,13 +19,13 @@ Author:
 
 Example:
     Run the server directly (stdio transport):
-        $ OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather
+        $ OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.weather
 
     Run as HTTP server:
-        $ OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather --transport streamable-http --port 8001
+        $ OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.weather --transport streamable-http --port 8001
 
     Run with custom database path:
-        $ MCP_DB_PATH=/var/data/keys.db OPENWEATHER_API_KEY=<key> uv run -m mcp_examples.weather
+        $ MCP_DB_PATH=/var/data/keys.db OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.weather
 """
 
 import os
@@ -35,7 +35,7 @@ from typing import Optional
 import httpx
 from fastmcp.exceptions import ToolError
 
-from mcp_examples.base import AuthenticatedMCPServer
+from mcp_server_kit.base import AuthenticatedMCPServer, lazy_module_instances
 
 _BASE_URL = "https://api.openweathermap.org"
 _GEO_URL = "http://api.openweathermap.org"
@@ -369,9 +369,9 @@ def _fmt_date(ts: Optional[int]) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
 
 
-# Module-level instances
-server = WeatherMCPServer()
-mcp = server.mcp  # FastMCP CLI expects a module-level 'mcp' object
+# Lazy module-level ``server`` / ``mcp`` — built on first attribute access, not
+# on import, so ``import mcp_server_kit.weather`` performs no database I/O.
+__getattr__ = lazy_module_instances(WeatherMCPServer)
 
 if __name__ == "__main__":
-    server.main()
+    WeatherMCPServer().main()

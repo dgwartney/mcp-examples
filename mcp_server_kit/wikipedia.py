@@ -10,13 +10,13 @@ Author:
 
 Example:
     Run the server directly (stdio transport):
-        $ uv run -m mcp_examples.wikipedia
+        $ uv run -m mcp_server_kit.wikipedia
 
     Run as HTTP server:
-        $ uv run -m mcp_examples.wikipedia --transport streamable-http --port 8001
+        $ uv run -m mcp_server_kit.wikipedia --transport streamable-http --port 8001
 
     Run with custom database path:
-        $ MCP_DB_PATH=/var/data/keys.db uv run -m mcp_examples.wikipedia
+        $ MCP_DB_PATH=/var/data/keys.db uv run -m mcp_server_kit.wikipedia
 """
 
 import re
@@ -26,7 +26,7 @@ from urllib.parse import quote
 import httpx
 from fastmcp.exceptions import ToolError
 
-from mcp_examples.base import AuthenticatedMCPServer
+from mcp_server_kit.base import AuthenticatedMCPServer, lazy_module_instances
 
 _BASE_URL = "https://en.wikipedia.org"
 _USER_AGENT = "mcp-wikipedia-example/1.0"
@@ -255,9 +255,9 @@ class WikipediaMCPServer(AuthenticatedMCPServer):
             ]
 
 
-# Module-level instances
-server = WikipediaMCPServer()
-mcp = server.mcp  # FastMCP CLI expects a module-level 'mcp' object
+# Lazy module-level ``server`` / ``mcp`` — built on first attribute access, not
+# on import, so ``import mcp_server_kit.wikipedia`` performs no database I/O.
+__getattr__ = lazy_module_instances(WikipediaMCPServer)
 
 if __name__ == "__main__":
-    server.main()
+    WikipediaMCPServer().main()

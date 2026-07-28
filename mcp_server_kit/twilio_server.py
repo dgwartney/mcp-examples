@@ -18,10 +18,10 @@ Author:
 
 Example:
     Run the server directly (stdio transport):
-        $ uv run -m mcp_examples.twilio_server
+        $ uv run -m mcp_server_kit.twilio_server
 
     Run as HTTP server:
-        $ uv run -m mcp_examples.twilio_server --transport streamable-http --port 8002
+        $ uv run -m mcp_server_kit.twilio_server --transport streamable-http --port 8002
 """
 
 import os
@@ -30,7 +30,7 @@ from typing import Optional
 import httpx
 from fastmcp.exceptions import ToolError
 
-from mcp_examples.base import AuthenticatedMCPServer
+from mcp_server_kit.base import AuthenticatedMCPServer, lazy_module_instances
 
 _TWILIO_BASE = "https://api.twilio.com/2010-04-01"
 _SENDGRID_SEND_URL = "https://api.sendgrid.com/v3/mail/send"
@@ -269,9 +269,9 @@ def _raise_sendgrid_error(resp: httpx.Response) -> None:
     raise ToolError(detail)
 
 
-# Module-level instances
-server = TwilioMCPServer()
-mcp = server.mcp
+# Lazy module-level ``server`` / ``mcp`` — built on first attribute access, not
+# on import, so ``import mcp_server_kit.twilio_server`` performs no database I/O.
+__getattr__ = lazy_module_instances(TwilioMCPServer)
 
 if __name__ == "__main__":
-    server.main()
+    TwilioMCPServer().main()

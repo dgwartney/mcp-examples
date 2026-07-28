@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_examples._template
+Unit tests for mcp_server_kit._template
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -10,8 +10,8 @@ import tempfile
 
 import pytest
 
-from mcp_examples.database import DatabaseManager
-from mcp_examples._template import TemplateMCPServer
+from mcp_server_kit.database import DatabaseManager
+from mcp_server_kit._template import TemplateMCPServer
 
 
 def _tool_fn(server, name):
@@ -54,9 +54,9 @@ class TestTemplateMCPServer:
         assert result == "You said: hello"
 
     def test_module_level_server_instance(self):
-        import mcp_examples._template as template_module
+        import mcp_server_kit._template as template_module
         assert isinstance(template_module.server, TemplateMCPServer)
 
     def test_module_level_mcp_instance(self):
-        import mcp_examples._template as template_module
+        import mcp_server_kit._template as template_module
         assert template_module.mcp is template_module.server.mcp

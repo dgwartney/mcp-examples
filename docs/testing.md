@@ -85,12 +85,12 @@ tests/test_server.py ................                                     [100%]
 
 Name                         Stmts   Miss   Cover   Missing
 -----------------------------------------------------------
-mcp_examples/__init__.py         5      0 100.00%
-mcp_examples/cli.py             22      2  90.91%   88-89
-mcp_examples/client.py          16      0 100.00%
-mcp_examples/database.py        25      0 100.00%
-mcp_examples/middleware.py      14      0 100.00%
-mcp_examples/server.py          22      2  90.91%   93, 102
+mcp_server_kit/__init__.py         5      0 100.00%
+mcp_server_kit/cli.py             22      2  90.91%   88-89
+mcp_server_kit/client.py          16      0 100.00%
+mcp_server_kit/database.py        25      0 100.00%
+mcp_server_kit/middleware.py      14      0 100.00%
+mcp_server_kit/server.py          22      2  90.91%   93, 102
 -----------------------------------------------------------
 TOTAL                          104      4  96.15%
 

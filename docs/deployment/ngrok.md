@@ -30,12 +30,12 @@ brew install ngrok
 
    **Greet server:**
    ```bash
-   uv run -m mcp_examples.server --transport streamable-http --port 8000
+   uv run -m mcp_server_kit.server --transport streamable-http --port 8000
    ```
 
    **Contact server:**
    ```bash
-   uv run -m mcp_examples.contacts --transport streamable-http --port 8000
+   uv run -m mcp_server_kit.contacts --transport streamable-http --port 8000
    ```
 
    On first run, the server prints its API key — save it:
@@ -54,14 +54,14 @@ brew install ngrok
 
    **macOS:**
    ```bash
-   uv run -m mcp_examples.cli \
+   uv run -m mcp_server_kit.cli \
      --api-key YOUR_API_KEY \
      --url https://YOUR-NGROK-SUBDOMAIN.ngrok.app/mcp
    ```
 
    **Windows (PowerShell):**
    ```powershell
-   uv run -m mcp_examples.cli `
+   uv run -m mcp_server_kit.cli `
      --api-key YOUR_API_KEY `
      --url https://YOUR-NGROK-SUBDOMAIN.ngrok.app/mcp
    ```

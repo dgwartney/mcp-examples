@@ -1,0 +1,46 @@
+"""
+mcp-server-kit package.
+
+Toolkit for building authenticated MCP servers. Re-exports all public
+classes for convenient access. Uses lazy imports to avoid ``RuntimeWarning``
+when running submodules directly with ``python -m mcp_server_kit.<module>``.
+"""
+
+import importlib as _importlib
+
+__version__ = "0.1.0"
+
+__all__ = [
+    "AuthenticatedMCPServer",
+    "ContactDatabaseManager",
+    "ContactMCPServer",
+    "DatabaseManager",
+    "ApiKeyMiddleware",
+    "GreetMCPServer",
+    "MCPClient",
+    "MCPClientApp",
+    "TwilioMCPServer",
+    "WeatherMCPServer",
+    "WikipediaMCPServer",
+]
+
+_LAZY_IMPORTS: dict[str, str] = {
+    "AuthenticatedMCPServer": "mcp_server_kit.base",
+    "ContactDatabaseManager": "mcp_server_kit.contact_database",
+    "ContactMCPServer": "mcp_server_kit.contacts",
+    "DatabaseManager": "mcp_server_kit.database",
+    "ApiKeyMiddleware": "mcp_server_kit.middleware",
+    "GreetMCPServer": "mcp_server_kit.server",
+    "MCPClient": "mcp_server_kit.client",
+    "MCPClientApp": "mcp_server_kit.cli",
+    "TwilioMCPServer": "mcp_server_kit.twilio_server",
+    "WeatherMCPServer": "mcp_server_kit.weather",
+    "WikipediaMCPServer": "mcp_server_kit.wikipedia",
+}
+
+
+def __getattr__(name: str):
+    if name in _LAZY_IMPORTS:
+        module = _importlib.import_module(_LAZY_IMPORTS[name])
+        return getattr(module, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

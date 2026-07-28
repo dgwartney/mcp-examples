@@ -36,16 +36,16 @@ uv sync --extra test
 **macOS:**
 ```bash
 # Set for a single command
-MCP_DB_PATH=/tmp/keys.db uv run -m mcp_examples.server
+MCP_DB_PATH=/tmp/keys.db uv run -m mcp_server_kit.server
 
 # Or export for the current terminal session
 export MCP_DB_PATH=/var/data/api_keys.db
-uv run -m mcp_examples.server
+uv run -m mcp_server_kit.server
 ```
 
 **Windows (PowerShell):**
 ```powershell
 # Set for the current terminal session
 $env:MCP_DB_PATH = "C:\data\api_keys.db"
-uv run -m mcp_examples.server
+uv run -m mcp_server_kit.server
 ```

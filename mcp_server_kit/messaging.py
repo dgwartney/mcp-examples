@@ -52,7 +52,7 @@ class MessagingMCPServer(AuthenticatedMCPServer):
     def __init__(self, db_path: Optional[str] = None):
         self._twilio_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
         self._twilio_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
-        self._twilio_basic_auth = os.environ.get("TWILIO_BASIC_AUTH", "")
+        self._twilio_basic_auth = os.environ.get("TWILIO_BASIC_AUTH", "").strip()
         self._twilio_messaging_service_sid = os.environ.get("TWILIO_MESSAGING_SERVICE_SID", "")
         self._sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
         self._sendgrid_from_email = os.environ.get("SENDGRID_FROM_EMAIL", "")
@@ -102,16 +102,7 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 "MessagingServiceSid": self._twilio_messaging_service_sid,
                 "Body": body,
             }
-            if self._twilio_basic_auth:
-                request_kwargs = {
-                    "headers": {"Authorization": f"Basic {self._twilio_basic_auth}"},
-                    "data": data,
-                }
-            else:
-                request_kwargs = {
-                    "auth": (self._twilio_sid, self._twilio_token),
-                    "data": data,
-                }
+            request_kwargs = {**self._twilio_auth_kwargs(), "data": data}
             try:
                 resp = self._http.post(url, **request_kwargs)
                 _raise_twilio_error(resp)
@@ -226,6 +217,16 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 "message_id": resp.headers.get("X-Message-Id"),
                 "status_code": resp.status_code,
             }
+
+    def _twilio_auth_kwargs(self) -> dict:
+        """
+        Return the httpx request kwargs (``auth`` or ``headers``) for whichever
+        Twilio credential is configured. Call ``_check_twilio_creds`` first to
+        guarantee exactly one is set.
+        """
+        if self._twilio_basic_auth:
+            return {"headers": {"Authorization": f"Basic {self._twilio_basic_auth}"}}
+        return {"auth": (self._twilio_sid, self._twilio_token)}
 
     def _check_twilio_creds(self) -> None:
         if self._twilio_token and self._twilio_basic_auth:

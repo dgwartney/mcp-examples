@@ -32,7 +32,7 @@ class TestServerRegistry:
 
     def test_registry_prefixes(self):
         prefixes = [prefix for prefix, _ in combined.SERVER_REGISTRY]
-        assert prefixes == ["greet", "contacts", "wikipedia", "weather", "twilio"]
+        assert prefixes == ["greet", "contacts", "wikipedia", "weather", "messaging"]
 
 
 class TestBuild:
@@ -80,7 +80,7 @@ class TestBuild:
             "/contacts",
             "/wikipedia",
             "/weather",
-            "/twilio",
+            "/messaging",
         ]
 
 
@@ -96,7 +96,7 @@ class TestApp:
             "/contacts",
             "/wikipedia",
             "/weather",
-            "/twilio",
+            "/messaging",
         }
 
     def test_unmounted_path_returns_404(self):

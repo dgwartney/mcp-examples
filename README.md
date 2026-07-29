@@ -14,8 +14,8 @@ A toolkit for building authenticated Model Context Protocol (MCP) servers using 
 | **Contact** | `mcp_server_kit/contacts.py` | `search_by_email`, `search_by_last_name`, `search_by_account_id`, `authenticate` |
 | **Wikipedia** | `mcp_server_kit/wikipedia.py` | `search_pages`, `search_titles`, `get_page_summary`, `get_related_pages` |
 | **Weather** | `mcp_server_kit/weather.py` | `get_current_weather`, `get_forecast`, `get_air_quality` |
-| **Twilio** | `mcp_server_kit/twilio_server.py` | `send_sms`, `send_email` |
-| **Combined** | `mcp_server_kit/combined.py` | All of the above, each at its own path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`, `/twilio/mcp`) |
+| **Messaging** | `mcp_server_kit/messaging.py` | `send_sms`, `send_email` |
+| **Combined** | `mcp_server_kit/combined.py` | All of the above, each at its own path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`, `/messaging/mcp`) |
 
 All servers use API key authentication over HTTP and run locally via stdio. See [docs/servers.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/servers.md) for full details, architecture, and project structure.
 
@@ -66,7 +66,7 @@ OPENWEATHER_API_KEY=<your_key> TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token
 TWILIO_MESSAGING_SERVICE_SID=<mg_sid> SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
   uv run -m mcp_server_kit.combined --port 8000
 # → prints: Generated default API key: <YOUR_KEY>
-# → /greet/mcp, /contacts/mcp, /wikipedia/mcp, /weather/mcp, /twilio/mcp all live
+# → /greet/mcp, /contacts/mcp, /wikipedia/mcp, /weather/mcp, /messaging/mcp all live
 
 # 3. Test the greet server
 uv run -m mcp_server_kit.cli --api-key YOUR_KEY --url http://localhost:8000/greet/mcp --name Alice

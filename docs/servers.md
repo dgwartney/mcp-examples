@@ -123,11 +123,11 @@ MCP_DB_PATH=/var/data/keys.db uv run -m mcp_server_kit.wikipedia
 
 ---
 
-## Twilio / SendGrid Server (`mcp_server_kit/twilio_server.py`)
+## Messaging Server (`mcp_server_kit/messaging.py`)
 
 Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) and email via the [SendGrid v3 Mail Send API](https://docs.sendgrid.com/api-reference/mail-send/mail-send). Supports plain-text and HTML email in a single tool call.
 
-- **TwilioMCPServer** (`twilio_server.py`): Subclass of `AuthenticatedMCPServer` with an `httpx.Client` for outbound Twilio and SendGrid requests
+- **MessagingMCPServer** (`messaging.py`): Subclass of `AuthenticatedMCPServer` with an `httpx.Client` for outbound Twilio and SendGrid requests
 - **API key auth**: Same middleware-based authentication as the other servers
 
 ### Required environment variables
@@ -135,7 +135,8 @@ Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) a
 | Variable | Description |
 |----------|-------------|
 | `TWILIO_ACCOUNT_SID` | Twilio account SID (starts with `AC`) |
-| `TWILIO_AUTH_TOKEN` | Twilio auth token |
+| `TWILIO_AUTH_TOKEN` | Twilio auth token. Mutually exclusive with `TWILIO_BASIC_AUTH` — set exactly one. |
+| `TWILIO_BASIC_AUTH` | Pre-encoded `Authorization: Basic <value>` credential (the base64 string, without the `Basic ` prefix). Mutually exclusive with `TWILIO_AUTH_TOKEN` — set exactly one. |
 | `TWILIO_MESSAGING_SERVICE_SID` | Twilio Messaging Service SID (starts with `MG`) |
 | `SENDGRID_API_KEY` | SendGrid API key (starts with `SG.`) |
 | `SENDGRID_FROM_EMAIL` | Verified sender email address |
@@ -154,15 +155,15 @@ Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) a
 # stdio transport (default)
 TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
-  uv run -m mcp_server_kit.twilio_server
+  uv run -m mcp_server_kit.messaging
 
 # HTTP transport
 TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
-  uv run -m mcp_server_kit.twilio_server --transport streamable-http --port 8003
+  uv run -m mcp_server_kit.messaging --transport streamable-http --port 8003
 
 # Custom database path
-MCP_DB_PATH=/var/data/keys.db TWILIO_ACCOUNT_SID=<sid> ... uv run -m mcp_server_kit.twilio_server
+MCP_DB_PATH=/var/data/keys.db TWILIO_ACCOUNT_SID=<sid> ... uv run -m mcp_server_kit.messaging
 ```
 
 ---
@@ -179,7 +180,7 @@ Mounts all five servers into a single process, each at its own URL path. This is
 | `/contacts/mcp` | Contact server |
 | `/wikipedia/mcp` | Wikipedia server |
 | `/weather/mcp` | Weather server |
-| `/twilio/mcp` | Twilio SMS + SendGrid email server |
+| `/messaging/mcp` | Messaging server (Twilio SMS + SendGrid email) |
 
 ### How it works
 
@@ -197,7 +198,7 @@ SERVER_REGISTRY: list[tuple[str, type]] = [
     ("contacts",  ContactMCPServer),
     ("wikipedia", WikipediaMCPServer),
     ("weather",   WeatherMCPServer),
-    ("twilio",    TwilioMCPServer),
+    ("messaging", MessagingMCPServer),
     ("myserver",  MyNewServer),   # ← add this
 ]
 ```
@@ -281,7 +282,7 @@ mcp-example/
 │   ├── contact_database.py    # ContactDatabaseManager (mock contacts)
 │   ├── contacts.py            # ContactMCPServer + module-level mcp instance
 │   ├── server.py              # GreetMCPServer + module-level mcp instance
-│   ├── twilio_server.py       # TwilioMCPServer + module-level mcp instance
+│   ├── messaging.py           # MessagingMCPServer + module-level mcp instance
 │   ├── weather.py             # WeatherMCPServer + module-level mcp instance
 │   ├── wikipedia.py           # WikipediaMCPServer + module-level mcp instance
 │   ├── combined.py            # Mounts all servers into one Starlette app
@@ -299,7 +300,7 @@ mcp-example/
 │   ├── test_cli.py           # MCPClientApp + integration tests
 │   ├── test_weather.py       # WeatherMCPServer tests
 │   ├── test_wikipedia.py     # WikipediaMCPServer tests
-│   ├── test_twilio_server.py # TwilioMCPServer tests
+│   ├── test_messaging.py     # MessagingMCPServer tests
 │   └── test_combined.py      # Combined server mounting/lifespan tests
 ├── api_keys.db               # SQLite database (generated on first run)
 ├── Dockerfile                # Container image for Fly.io and VPS deployment

@@ -37,11 +37,11 @@ same `AuthenticatedMCPServer` base class:
 | Contact | `mcp_server_kit/contacts.py` | `search_by_last_name`, `search_by_email`, `search_by_account_id`, `authenticate` |
 | Wikipedia | `mcp_server_kit/wikipedia.py` | `search_pages`, `search_titles`, `get_page_summary`, `get_related_pages` |
 | Weather | `mcp_server_kit/weather.py` | `get_current_weather`, `get_forecast`, `get_air_quality` |
-| Twilio | `mcp_server_kit/twilio_server.py` | `send_sms`, `send_email` |
+| Messaging | `mcp_server_kit/messaging.py` | `send_sms`, `send_email` |
 
 `mcp_server_kit/combined.py` mounts all five into a single deployable Starlette app, each
 at its own URL path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`,
-`/twilio/mcp`) sharing one API key store — this is the recommended way to deploy to Kore
+`/messaging/mcp`) sharing one API key store — this is the recommended way to deploy to Kore
 AI, since it exposes every tool under one base URL with one API key. You can also run any
 single server standalone on its own port if you only need one.
 

@@ -30,12 +30,12 @@ BUNDLED_SERVERS = [
     ("contacts", "ContactMCPServer", "mcp_server_kit.contacts"),
     ("wikipedia", "WikipediaMCPServer", "mcp_server_kit.wikipedia"),
     ("weather", "WeatherMCPServer", "mcp_server_kit.weather"),
-    ("twilio", "TwilioMCPServer", "mcp_server_kit.twilio_server"),
+    ("messaging", "MessagingMCPServer", "mcp_server_kit.messaging"),
 ]
 _BUNDLED_BY_PREFIX = {p: (p, c, m) for p, c, m in BUNDLED_SERVERS}
 
 # Servers that need external-service env vars to actually function.
-_ENV_DEPENDENT = {"weather", "twilio"}
+_ENV_DEPENDENT = {"weather", "messaging"}
 
 
 def to_snake_case(name: str) -> str:

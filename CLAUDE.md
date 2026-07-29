@@ -42,8 +42,8 @@ The project is organized as a `mcp_server_kit` Python package:
 - **mcp_server_kit/contacts.py** — `ContactMCPServer` derived class exposing contact search and authentication tools.
 - **mcp_server_kit/weather.py** — `WeatherMCPServer` derived class wrapping the OpenWeatherMap API (current weather, forecast, air quality).
 - **mcp_server_kit/wikipedia.py** — `WikipediaMCPServer` derived class wrapping the Wikipedia API (search, summaries, related pages).
-- **mcp_server_kit/twilio_server.py** — `TwilioMCPServer` derived class exposing SMS (Twilio) and email (SendGrid) tools.
-- **mcp_server_kit/combined.py** — Mounts all servers above into a single Starlette app, each at its own URL path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`, `/twilio/mcp`). Entry point used for deployment.
+- **mcp_server_kit/messaging.py** — `MessagingMCPServer` derived class exposing SMS (Twilio) and email (SendGrid) tools.
+- **mcp_server_kit/combined.py** — Mounts all servers above into a single Starlette app, each at its own URL path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`, `/messaging/mcp`). Entry point used for deployment.
 - **mcp_server_kit/client.py** — `MCPClient` class that connects to a remote MCP endpoint and calls tools.
 - **mcp_server_kit/cli.py** — `MCPClientApp` CLI application and `main()` entry point.
 - **mcp_server_kit/__init__.py** — Re-exports all public classes.
@@ -71,7 +71,7 @@ a first-time contributor, not architecture changes.
 2. **Add a minimal starter template** — a bare-bones server module (e.g.
    `mcp_server_kit/_template.py` or `templates/new_server.py.tmpl`) with one dummy tool and
    no domain logic (no SQLite CRM, no external API), so a beginner can copy one small file
-   and understand the whole shape before looking at `contacts.py`/`weather.py`/`twilio_server.py`.
+   and understand the whole shape before looking at `contacts.py`/`weather.py`/`messaging.py`.
 3. **Add a scaffold script** — e.g. `scripts/new_server.py <Name>` that generates the new
    server module, a matching `tests/test_<name>.py` skeleton, and appends the entry to
    `combined.py`'s `SERVER_REGISTRY` — the multi-file edit (module + tests + registry +

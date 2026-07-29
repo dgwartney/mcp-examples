@@ -9,8 +9,8 @@ primary_region = 'ord'
   # Set API credentials via fly secrets — never put keys in fly.toml
   # Weather:  fly secrets set OPENWEATHER_API_KEY=<key>  (https://openweathermap.org/api)
   # Twilio:   fly secrets set TWILIO_ACCOUNT_SID=<sid>
-  #           fly secrets set TWILIO_AUTH_TOKEN=<token>
-  #           fly secrets set TWILIO_FROM_NUMBER=<e164_number>
+  #           fly secrets set TWILIO_AUTH_TOKEN=<token>  # or TWILIO_BASIC_AUTH (mutually exclusive)
+  #           fly secrets set TWILIO_MESSAGING_SERVICE_SID=<mg_sid>
   # SendGrid: fly secrets set SENDGRID_API_KEY=<sg_key>  (https://sendgrid.com)
   #           fly secrets set SENDGRID_FROM_EMAIL=<verified_sender>
   #           fly secrets set SENDGRID_FROM_NAME=<display_name>  # optional

@@ -28,7 +28,7 @@ uv run -m mcp_server_kit.wikipedia
 ```bash
 TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
-  uv run -m mcp_server_kit.twilio_server
+  uv run -m mcp_server_kit.messaging
 ```
 
 > stdio transport does not require an API key and is not accessible remotely. Servers that call external APIs (Weather, Twilio) always require their respective credentials regardless of transport.
@@ -57,11 +57,11 @@ OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.weather --transport streamabl
 uv run -m mcp_server_kit.wikipedia --transport streamable-http --port 8000
 ```
 
-**Twilio server:**
+**Messaging server:**
 ```bash
 TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
-  uv run -m mcp_server_kit.twilio_server --transport streamable-http --port 8000
+  uv run -m mcp_server_kit.messaging --transport streamable-http --port 8000
 ```
 
 The server endpoint is `http://localhost:8000/mcp`.
@@ -100,8 +100,8 @@ uv run fastmcp inspect mcp_server_kit/weather.py
 # Wikipedia server
 uv run fastmcp inspect mcp_server_kit/wikipedia.py
 
-# Twilio server
-uv run fastmcp inspect mcp_server_kit/twilio_server.py
+# Messaging server
+uv run fastmcp inspect mcp_server_kit/messaging.py
 ```
 
 ### Interactive testing with MCP Inspector
@@ -121,8 +121,8 @@ uv run fastmcp dev mcp_server_kit/weather.py
 # Wikipedia server
 uv run fastmcp dev mcp_server_kit/wikipedia.py
 
-# Twilio server
-uv run fastmcp dev mcp_server_kit/twilio_server.py
+# Messaging server
+uv run fastmcp dev mcp_server_kit/messaging.py
 ```
 
 The Inspector UI opens at `http://localhost:5173` by default.

@@ -1,5 +1,5 @@
 """
-Unit tests for mcp_server_kit.twilio_server
+Unit tests for mcp_server_kit.messaging
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -14,7 +14,7 @@ import pytest
 from fastmcp.exceptions import ToolError
 
 from mcp_server_kit.database import DatabaseManager
-from mcp_server_kit.twilio_server import TwilioMCPServer
+from mcp_server_kit.messaging import MessagingMCPServer
 
 
 def _tool_fn(server, name):
@@ -40,7 +40,7 @@ def server(tmp_path, monkeypatch):
     monkeypatch.setenv("SENDGRID_FROM_EMAIL", "from@example.com")
     monkeypatch.delenv("SENDGRID_FROM_NAME", raising=False)
     db = str(tmp_path / "keys.db")
-    s = TwilioMCPServer(db_path=db)
+    s = MessagingMCPServer(db_path=db)
     s._http = MagicMock()
     return s
 
@@ -50,6 +50,7 @@ def server_no_creds(tmp_path, monkeypatch):
     for var in (
         "TWILIO_ACCOUNT_SID",
         "TWILIO_AUTH_TOKEN",
+        "TWILIO_BASIC_AUTH",
         "TWILIO_MESSAGING_SERVICE_SID",
         "SENDGRID_API_KEY",
         "SENDGRID_FROM_EMAIL",
@@ -57,7 +58,37 @@ def server_no_creds(tmp_path, monkeypatch):
     ):
         monkeypatch.delenv(var, raising=False)
     db = str(tmp_path / "keys.db")
-    s = TwilioMCPServer(db_path=db)
+    s = MessagingMCPServer(db_path=db)
+    s._http = MagicMock()
+    return s
+
+
+@pytest.fixture
+def server_basic_auth(tmp_path, monkeypatch):
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "ACtest")
+    monkeypatch.delenv("TWILIO_AUTH_TOKEN", raising=False)
+    monkeypatch.setenv("TWILIO_BASIC_AUTH", "dGVzdDp0b2tlbg==")
+    monkeypatch.setenv("TWILIO_MESSAGING_SERVICE_SID", "MGtest")
+    monkeypatch.setenv("SENDGRID_API_KEY", "SG.test")
+    monkeypatch.setenv("SENDGRID_FROM_EMAIL", "from@example.com")
+    monkeypatch.delenv("SENDGRID_FROM_NAME", raising=False)
+    db = str(tmp_path / "keys.db")
+    s = MessagingMCPServer(db_path=db)
+    s._http = MagicMock()
+    return s
+
+
+@pytest.fixture
+def server_both_auth(tmp_path, monkeypatch):
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "ACtest")
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "authtoken")
+    monkeypatch.setenv("TWILIO_BASIC_AUTH", "dGVzdDp0b2tlbg==")
+    monkeypatch.setenv("TWILIO_MESSAGING_SERVICE_SID", "MGtest")
+    monkeypatch.setenv("SENDGRID_API_KEY", "SG.test")
+    monkeypatch.setenv("SENDGRID_FROM_EMAIL", "from@example.com")
+    monkeypatch.delenv("SENDGRID_FROM_NAME", raising=False)
+    db = str(tmp_path / "keys.db")
+    s = MessagingMCPServer(db_path=db)
     s._http = MagicMock()
     return s
 
@@ -78,10 +109,10 @@ def _resp(data, status=200, headers=None):
 # ---------------------------------------------------------------------------
 
 
-class TestTwilioMCPServerInit:
+class TestMessagingMCPServerInit:
 
     def test_server_name(self, server):
-        assert server.mcp.name == "TwilioMCP"
+        assert server.mcp.name == "MessagingMCP"
 
     def test_two_tools_registered(self, server):
         assert len(server.mcp._tool_manager._tools) == 2
@@ -95,16 +126,17 @@ class TestTwilioMCPServerInit:
     def test_creds_read_from_env(self, server):
         assert server._twilio_sid == "ACtest"
         assert server._twilio_token == "authtoken"
+        assert server._twilio_basic_auth == ""
         assert server._twilio_messaging_service_sid == "MGtest"
         assert server._sendgrid_key == "SG.test"
         assert server._sendgrid_from_email == "from@example.com"
 
     def test_module_level_server_instance(self):
-        import mcp_server_kit.twilio_server as m
-        assert isinstance(m.server, TwilioMCPServer)
+        import mcp_server_kit.messaging as m
+        assert isinstance(m.server, MessagingMCPServer)
 
     def test_module_level_mcp_instance(self):
-        import mcp_server_kit.twilio_server as m
+        import mcp_server_kit.messaging as m
         assert m.mcp is m.server.mcp
 
 
@@ -133,6 +165,22 @@ class TestSendSms:
         kwargs = server._http.post.call_args[1]
         assert kwargs["data"]["MessagingServiceSid"] == "MGtest"
         assert kwargs["auth"] == ("ACtest", "authtoken")
+
+    def test_basic_auth_used_when_configured(self, server_basic_auth):
+        server_basic_auth._http.post.return_value = _resp(
+            {"sid": "SM1", "status": "queued"}
+        )
+        _tool_fn(server_basic_auth, "send_sms")(to="+15551234567", body="hi")
+        kwargs = server_basic_auth._http.post.call_args[1]
+        assert "auth" not in kwargs
+        assert kwargs["headers"] == {"Authorization": "Basic dGVzdDp0b2tlbg=="}
+        assert kwargs["data"]["MessagingServiceSid"] == "MGtest"
+
+    def test_both_auth_methods_set_raises_tool_error(self, server_both_auth):
+        with pytest.raises(
+            ToolError, match="Set only one of TWILIO_AUTH_TOKEN or TWILIO_BASIC_AUTH"
+        ):
+            _tool_fn(server_both_auth, "send_sms")(to="+15551234567", body="hi")
 
     def test_non_e164_number_raises_tool_error(self, server):
         with pytest.raises(ToolError, match="E.164"):

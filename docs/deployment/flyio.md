@@ -110,7 +110,7 @@ The `Dockerfile` runs the **combined server**, which mounts all five MCP servers
 | `https://mcp-example.fly.dev/contacts/mcp` | Contact server |
 | `https://mcp-example.fly.dev/wikipedia/mcp` | Wikipedia server |
 | `https://mcp-example.fly.dev/weather/mcp` | Weather server |
-| `https://mcp-example.fly.dev/twilio/mcp` | Twilio SMS + SendGrid email server |
+| `https://mcp-example.fly.dev/messaging/mcp` | Messaging server (Twilio SMS + SendGrid email) |
 
 One API key (stored in the shared `/data/api_keys.db` volume) authenticates to all five paths.
 
@@ -171,14 +171,14 @@ curl -s -X POST https://mcp-example.fly.dev/weather/mcp \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
 
-curl -s -X POST https://mcp-example.fly.dev/twilio/mcp \
+curl -s -X POST https://mcp-example.fly.dev/messaging/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
 ```
 
-A successful response for each includes the server name in the `serverInfo` field: `"name":"GreetMCP"`, `"name":"ContactMCP"`, `"name":"WikipediaMCP"`, `"name":"WeatherMCP"`, or `"name":"TwilioMCP"`.
+A successful response for each includes the server name in the `serverInfo` field: `"name":"GreetMCP"`, `"name":"ContactMCP"`, `"name":"WikipediaMCP"`, `"name":"WeatherMCP"`, or `"name":"MessagingMCP"`.
 
 ---
 

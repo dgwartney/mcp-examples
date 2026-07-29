@@ -132,7 +132,7 @@ Stop the server in terminal **A** with `Ctrl-C` when finished.
 ## 2. Combined server
 
 The combined app mounts every server in `SERVER_REGISTRY` under its own path
-(`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`, `/twilio/mcp`).
+(`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`, `/messaging/mcp`).
 This is the entry point used for deployment and for Artemis.
 
 ### 2.1 Start the combined app

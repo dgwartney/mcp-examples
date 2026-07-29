@@ -21,3 +21,5 @@ htmlcov/
 .idea
 
 *.pdf
+
+.env

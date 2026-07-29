@@ -271,13 +271,13 @@ curl -s -X POST http://localhost:8000/mcp \
 
 ---
 
-### Twilio Server
+### Messaging Server
 
 Start the server first:
 ```bash
 TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid> \
 SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<email> \
-  uv run -m mcp_server_kit.twilio_server --transport streamable-http --port 8000
+  uv run -m mcp_server_kit.messaging --transport streamable-http --port 8000
 ```
 
 Run Steps 1 and 2 from the Greet Server section above (same commands). Then call any messaging tool:
@@ -297,7 +297,7 @@ curl -s -X POST http://localhost:8000/mcp \
       "name": "send_sms",
       "arguments": {
         "to": "+15551234567",
-        "body": "Hello from the MCP Twilio server!"
+        "body": "Hello from the MCP messaging server!"
       }
     }
   }'
@@ -319,7 +319,7 @@ curl -s -X POST http://localhost:8000/mcp \
       "arguments": {
         "to": "recipient@example.com",
         "subject": "Hello from MCP",
-        "plain_text": "This is a plain-text email sent via the MCP Twilio server."
+        "plain_text": "This is a plain-text email sent via the MCP messaging server."
       }
     }
   }'
@@ -343,7 +343,7 @@ curl -s -X POST http://localhost:8000/mcp \
         "to_name": "Alice Smith",
         "subject": "Hello from MCP (HTML)",
         "plain_text": "This is the plain-text fallback.",
-        "html": "<h1>Hello!</h1><p>This is an <strong>HTML</strong> email sent via the MCP Twilio server.</p>"
+        "html": "<h1>Hello!</h1><p>This is an <strong>HTML</strong> email sent via the MCP messaging server.</p>"
       }
     }
   }'

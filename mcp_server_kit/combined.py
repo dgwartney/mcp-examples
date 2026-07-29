@@ -8,7 +8,7 @@ Endpoints (when running on port 8000):
     /contacts/mcp   → Contact server
     /wikipedia/mcp  → Wikipedia server
     /weather/mcp    → Weather server
-    /twilio/mcp     → Twilio SMS + SendGrid email server
+    /messaging/mcp  → Messaging server (Twilio SMS + SendGrid email)
 
 Run locally:
     OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.combined --port 8000
@@ -17,7 +17,7 @@ Deploy to Fly.io:
     fly secrets set OPENWEATHER_API_KEY=<key>
     fly secrets set TWILIO_ACCOUNT_SID=<sid>
     fly secrets set TWILIO_AUTH_TOKEN=<token>
-    fly secrets set TWILIO_FROM_NUMBER=<e164_number>
+    fly secrets set TWILIO_MESSAGING_SERVICE_SID=<mg_sid>
     fly secrets set SENDGRID_API_KEY=<sg_key>
     fly secrets set SENDGRID_FROM_EMAIL=<verified_sender>
     fly deploy
@@ -32,7 +32,7 @@ from starlette.routing import Mount
 
 from mcp_server_kit.contacts import ContactMCPServer
 from mcp_server_kit.server import GreetMCPServer
-from mcp_server_kit.twilio_server import TwilioMCPServer
+from mcp_server_kit.messaging import MessagingMCPServer
 from mcp_server_kit.weather import WeatherMCPServer
 from mcp_server_kit.wikipedia import WikipediaMCPServer
 
@@ -43,7 +43,7 @@ SERVER_REGISTRY: list[tuple[str, type]] = [
     ("contacts", ContactMCPServer),
     ("wikipedia", WikipediaMCPServer),
     ("weather", WeatherMCPServer),
-    ("twilio", TwilioMCPServer),
+    ("messaging", MessagingMCPServer),
 ]
 
 

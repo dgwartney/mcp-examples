@@ -7,7 +7,12 @@ Exposes two tools:
 
 Required environment variables:
     TWILIO_ACCOUNT_SID          — Twilio account SID (starts with "AC")
-    TWILIO_AUTH_TOKEN           — Twilio auth token
+    TWILIO_AUTH_TOKEN           — Twilio auth token. Mutually exclusive with
+                                  TWILIO_BASIC_AUTH — set exactly one.
+    TWILIO_BASIC_AUTH           — Pre-encoded "Authorization: Basic <value>"
+                                  credential (the base64 string, without the
+                                  "Basic " prefix). Mutually exclusive with
+                                  TWILIO_AUTH_TOKEN — set exactly one.
     TWILIO_MESSAGING_SERVICE_SID — Twilio Messaging Service SID (starts with "MG")
     SENDGRID_API_KEY            — SendGrid API key (starts with "SG.")
     SENDGRID_FROM_EMAIL         — Verified sender email address
@@ -18,10 +23,10 @@ Author:
 
 Example:
     Run the server directly (stdio transport):
-        $ uv run -m mcp_server_kit.twilio_server
+        $ uv run -m mcp_server_kit.messaging
 
     Run as HTTP server:
-        $ uv run -m mcp_server_kit.twilio_server --transport streamable-http --port 8002
+        $ uv run -m mcp_server_kit.messaging --transport streamable-http --port 8002
 """
 
 import os
@@ -36,7 +41,7 @@ _TWILIO_BASE = "https://api.twilio.com/2010-04-01"
 _SENDGRID_SEND_URL = "https://api.sendgrid.com/v3/mail/send"
 
 
-class TwilioMCPServer(AuthenticatedMCPServer):
+class MessagingMCPServer(AuthenticatedMCPServer):
     """
     MCP server with Twilio SMS and SendGrid email tools.
 
@@ -47,12 +52,13 @@ class TwilioMCPServer(AuthenticatedMCPServer):
     def __init__(self, db_path: Optional[str] = None):
         self._twilio_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
         self._twilio_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        self._twilio_basic_auth = os.environ.get("TWILIO_BASIC_AUTH", "")
         self._twilio_messaging_service_sid = os.environ.get("TWILIO_MESSAGING_SERVICE_SID", "")
         self._sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
         self._sendgrid_from_email = os.environ.get("SENDGRID_FROM_EMAIL", "")
         self._sendgrid_from_name = os.environ.get("SENDGRID_FROM_NAME", "")
         self._http = httpx.Client(timeout=15.0)
-        super().__init__(name="TwilioMCP", db_path=db_path)
+        super().__init__(name="MessagingMCP", db_path=db_path)
 
     def _register_tools(self) -> None:
 
@@ -91,16 +97,23 @@ class TwilioMCPServer(AuthenticatedMCPServer):
                 raise ToolError("SMS body must not be empty.")
 
             url = f"{_TWILIO_BASE}/Accounts/{self._twilio_sid}/Messages.json"
+            data = {
+                "To": to,
+                "MessagingServiceSid": self._twilio_messaging_service_sid,
+                "Body": body,
+            }
+            if self._twilio_basic_auth:
+                request_kwargs = {
+                    "headers": {"Authorization": f"Basic {self._twilio_basic_auth}"},
+                    "data": data,
+                }
+            else:
+                request_kwargs = {
+                    "auth": (self._twilio_sid, self._twilio_token),
+                    "data": data,
+                }
             try:
-                resp = self._http.post(
-                    url,
-                    auth=(self._twilio_sid, self._twilio_token),
-                    data={
-                        "To": to,
-                        "MessagingServiceSid": self._twilio_messaging_service_sid,
-                        "Body": body,
-                    },
-                )
+                resp = self._http.post(url, **request_kwargs)
                 _raise_twilio_error(resp)
             except ToolError:
                 raise
@@ -215,15 +228,20 @@ class TwilioMCPServer(AuthenticatedMCPServer):
             }
 
     def _check_twilio_creds(self) -> None:
+        if self._twilio_token and self._twilio_basic_auth:
+            raise ToolError(
+                "Set only one of TWILIO_AUTH_TOKEN or TWILIO_BASIC_AUTH, not both."
+            )
         missing = [
             name
             for name, val in [
                 ("TWILIO_ACCOUNT_SID", self._twilio_sid),
-                ("TWILIO_AUTH_TOKEN", self._twilio_token),
                 ("TWILIO_MESSAGING_SERVICE_SID", self._twilio_messaging_service_sid),
             ]
             if not val
         ]
+        if not self._twilio_token and not self._twilio_basic_auth:
+            missing.append("TWILIO_AUTH_TOKEN or TWILIO_BASIC_AUTH")
         if missing:
             raise ToolError(
                 f"Missing Twilio credentials: {', '.join(missing)}. "
@@ -270,8 +288,8 @@ def _raise_sendgrid_error(resp: httpx.Response) -> None:
 
 
 # Lazy module-level ``server`` / ``mcp`` — built on first attribute access, not
-# on import, so ``import mcp_server_kit.twilio_server`` performs no database I/O.
-__getattr__ = lazy_module_instances(TwilioMCPServer)
+# on import, so ``import mcp_server_kit.messaging`` performs no database I/O.
+__getattr__ = lazy_module_instances(MessagingMCPServer)
 
 if __name__ == "__main__":
-    TwilioMCPServer().main()
+    MessagingMCPServer().main()

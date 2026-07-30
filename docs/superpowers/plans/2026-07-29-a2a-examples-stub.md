@@ -638,8 +638,7 @@ from a2a.types import (
     TextPart,
 )
 from agent_framework import ChatAgent
-from agent_framework._clients import BaseChatClient
-from agent_framework._types import ChatMessage, ChatOptions, ChatResponse, ChatResponseUpdate
+from agent_framework import BaseChatClient, ChatMessage, ChatOptions, ChatResponse, ChatResponseUpdate
 from starlette.testclient import TestClient
 
 from a2a_agent_kit.base import AuthenticatedA2AAgent
@@ -1030,7 +1029,7 @@ git commit -m "Add AuthenticatedA2AAgent base class"
 - Test: `/Users/dgwartney/git/a2a-examples/tests/test_greet_agent.py`
 
 **Interfaces:**
-- Consumes: `AuthenticatedA2AAgent` (Task 4), `agent_framework.ChatAgent`, `agent_framework._clients.BaseChatClient`, `agent_framework._types.{ChatMessage, ChatOptions, ChatResponse, ChatResponseUpdate}`, `a2a.types.AgentSkill`.
+- Consumes: `AuthenticatedA2AAgent` (Task 4), `agent_framework.ChatAgent`, `agent_framework.{BaseChatClient, ChatMessage, ChatOptions, ChatResponse, ChatResponseUpdate}`, `a2a.types.AgentSkill`.
 - Produces: `EchoChatClient` (a `BaseChatClient` that replies `"Hello, {last user message text}!"` with no network calls), `GreetA2AAgent` (a concrete `AuthenticatedA2AAgent`), module-level `if __name__ == "__main__":` entry point.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1062,7 +1061,7 @@ class TestEchoChatClient:
 
     @pytest.mark.asyncio
     async def test_get_response_echoes_greeting(self):
-        from agent_framework._types import ChatMessage, ChatOptions
+        from agent_framework import ChatOptions
 
         client = EchoChatClient()
         response = await client.get_response("World", chat_options=ChatOptions())
@@ -1071,7 +1070,7 @@ class TestEchoChatClient:
 
     @pytest.mark.asyncio
     async def test_streaming_response_yields_same_greeting(self):
-        from agent_framework._types import ChatOptions
+        from agent_framework import ChatOptions
 
         client = EchoChatClient()
         updates = [
@@ -1145,8 +1144,7 @@ from collections.abc import AsyncIterable, MutableSequence
 
 from a2a.types import AgentSkill
 from agent_framework import ChatAgent
-from agent_framework._clients import BaseChatClient
-from agent_framework._types import ChatMessage, ChatOptions, ChatResponse, ChatResponseUpdate
+from agent_framework import BaseChatClient, ChatMessage, ChatOptions, ChatResponse, ChatResponseUpdate
 
 from a2a_agent_kit.base import AuthenticatedA2AAgent
 

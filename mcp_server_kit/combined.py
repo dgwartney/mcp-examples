@@ -31,6 +31,8 @@ from starlette.applications import Starlette
 from starlette.routing import Mount
 
 from mcp_server_kit.contacts import ContactMCPServer
+from mcp_server_kit.onboarding import OnboardingMCPServer
+from mcp_server_kit.pto import PtoMCPServer
 from mcp_server_kit.server import GreetMCPServer
 from mcp_server_kit.messaging import MessagingMCPServer
 from mcp_server_kit.weather import WeatherMCPServer
@@ -44,6 +46,8 @@ SERVER_REGISTRY: list[tuple[str, type]] = [
     ("wikipedia", WikipediaMCPServer),
     ("weather", WeatherMCPServer),
     ("messaging", MessagingMCPServer),
+    ("pto", PtoMCPServer),
+    ("onboarding", OnboardingMCPServer),
 ]
 
 

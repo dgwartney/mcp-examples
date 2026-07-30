@@ -28,7 +28,7 @@ in the Kore AI Agent Platform (Artemis).
 ## Overview
 
 The Kore AI Agent Platform uses the Model Context Protocol (MCP) to integrate with
-external tools and services. This repository ships five MCP servers, all built on the
+external tools and services. This repository ships seven MCP servers, all built on the
 same `AuthenticatedMCPServer` base class:
 
 | Server | Module | Tools |
@@ -38,12 +38,15 @@ same `AuthenticatedMCPServer` base class:
 | Wikipedia | `mcp_server_kit/wikipedia.py` | `search_pages`, `search_titles`, `get_page_summary`, `get_related_pages` |
 | Weather | `mcp_server_kit/weather.py` | `get_current_weather`, `get_forecast`, `get_air_quality` |
 | Messaging | `mcp_server_kit/messaging.py` | `send_sms`, `send_email` |
+| PTO | `mcp_server_kit/pto.py` | `get_balance`, `get_balance_by_email`, `request_pto`, `list_requests` |
+| Onboarding | `mcp_server_kit/onboarding.py` | `create_case`, `get_case`, `update_case_status`, `list_cases` |
 
-`mcp_server_kit/combined.py` mounts all five into a single deployable Starlette app, each
+`mcp_server_kit/combined.py` mounts all seven into a single deployable Starlette app, each
 at its own URL path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`,
-`/messaging/mcp`) sharing one API key store — this is the recommended way to deploy to Kore
-AI, since it exposes every tool under one base URL with one API key. You can also run any
-single server standalone on its own port if you only need one.
+`/messaging/mcp`, `/pto/mcp`, `/onboarding/mcp`) sharing one API key store — this is the
+recommended way to deploy to Kore AI, since it exposes every tool under one base URL with
+one API key. You can also run any single server standalone on its own port if you only
+need one.
 
 - **Authentication**: SQLite-backed API key validation (`X-API-Key` header)
 - **Transport**: HTTP-based MCP protocol (required for Kore AI — the default stdio

@@ -27,12 +27,15 @@ class FakeServer:
 
 class TestServerRegistry:
 
-    def test_registry_has_five_entries(self):
-        assert len(combined.SERVER_REGISTRY) == 5
+    def test_registry_has_seven_entries(self):
+        assert len(combined.SERVER_REGISTRY) == 7
 
     def test_registry_prefixes(self):
         prefixes = [prefix for prefix, _ in combined.SERVER_REGISTRY]
-        assert prefixes == ["greet", "contacts", "wikipedia", "weather", "messaging"]
+        assert prefixes == [
+            "greet", "contacts", "wikipedia", "weather", "messaging",
+            "pto", "onboarding",
+        ]
 
 
 class TestBuild:
@@ -71,16 +74,18 @@ class TestBuild:
             transport="streamable-http",
         )
 
-    def test_build_real_registry_produces_five_routes(self):
+    def test_build_real_registry_produces_seven_routes(self):
         routes, sub_apps = combined._build()
-        assert len(routes) == 5
-        assert len(sub_apps) == 5
+        assert len(routes) == 7
+        assert len(sub_apps) == 7
         assert [r.path for r in routes] == [
             "/greet",
             "/contacts",
             "/wikipedia",
             "/weather",
             "/messaging",
+            "/pto",
+            "/onboarding",
         ]
 
 
@@ -97,6 +102,8 @@ class TestApp:
             "/wikipedia",
             "/weather",
             "/messaging",
+            "/pto",
+            "/onboarding",
         }
 
     def test_unmounted_path_returns_404(self):

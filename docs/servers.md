@@ -1,6 +1,6 @@
 # Servers
 
-This project provides five MCP servers built on a shared authenticated base class.
+This project provides seven MCP servers built on a shared authenticated base class.
 
 ## Greet Server (`mcp_server_kit/server.py`)
 
@@ -147,7 +147,7 @@ Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) a
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `send_sms` | `to: str, body: str` | Send an SMS via Twilio using the configured Messaging Service. `to` must be E.164 format (e.g. `+15551234567`). Returns the Twilio message `sid` and delivery `status`. |
-| `send_email` | `to: str, subject: str, plain_text: str, html: str = None, to_name: str = None, from_email: str = None, from_name: str = None` | Send an email via SendGrid. If `html` is provided the message is sent as multipart/alternative so mail clients can choose the best format. Returns SendGrid `message_id`. |
+| `send_email` | `to: str, subject: str, plain_text: str = None, html: str = None, to_name: str = None, from_email: str = None, from_name: str = None` | Send an email via SendGrid. At least one of `plain_text` or `html` must be provided; if both are given the message is sent as multipart/alternative so mail clients can choose the best format. Returns SendGrid `message_id`. |
 
 ### Running
 
@@ -168,9 +168,75 @@ MCP_DB_PATH=/var/data/keys.db TWILIO_ACCOUNT_SID=<sid> ... uv run -m mcp_server_
 
 ---
 
+## PTO Server (`mcp_server_kit/pto.py`)
+
+A mock employee PTO (paid time off) server backed by a SQLite database, auto-seeded with a small India/USA workforce (three India employees, three USA employees, each with a manager and a starting PTO balance).
+
+- **PtoDatabaseManager** (`pto_database.py`): SQLite-backed storage for employee PTO balances and a PTO request log
+- **PtoMCPServer** (`pto.py`): Subclass of `AuthenticatedMCPServer` exposing balance lookup and PTO request tools
+
+### Tools
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `get_balance` | `employee_id: str` | Look up an employee's PTO balance by employee ID. Raises `ToolError` if not found. |
+| `get_balance_by_email` | `email: str` | Look up an employee's PTO balance by email (case-insensitive exact match). Raises `ToolError` if not found. |
+| `request_pto` | `employee_id: str, start_date: str, end_date: str, days: float` | File a PTO request. Auto-approves and deducts the balance if sufficient days are available; otherwise recorded as `denied_insufficient_balance` with no deduction. Dates are ISO `YYYY-MM-DD`. |
+| `list_requests` | `employee_id: str` | List all PTO requests filed by an employee, most recent first. |
+
+### Seed data
+
+`pto.db` is auto-seeded with 6 employees: `E1001`–`E1003` (India, manager chain Asha Rao → Priya Nair → Deepak Menon) and `E2001`–`E2003` (USA, manager chain Jordan Blake → Casey Morgan → Jamie Ellis). Starting balances range 9–22 days.
+
+### Running
+
+```bash
+# stdio transport (default)
+uv run -m mcp_server_kit.pto
+
+# HTTP transport
+uv run -m mcp_server_kit.pto --transport streamable-http --port 8010
+
+# Custom database paths
+MCP_DB_PATH=/var/data/keys.db PTO_DB_PATH=/var/data/pto.db uv run -m mcp_server_kit.pto
+```
+
+---
+
+## Onboarding Server (`mcp_server_kit/onboarding.py`)
+
+A mock new-hire onboarding case tracker backed by a SQLite database. Unlike PTO, the case table starts empty — cases are created at runtime as new hires are onboarded (India/USA).
+
+- **OnboardingDatabaseManager** (`onboarding_database.py`): SQLite-backed storage for onboarding case records
+- **OnboardingMCPServer** (`onboarding.py`): Subclass of `AuthenticatedMCPServer` exposing case create/read/update/list tools
+
+### Tools
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `create_case` | `employee_name: str, employee_email: str, location: str, manager_name: str, start_date: str` | Create a new onboarding case in `submitted` status. Returns the created case with its `CaseId`. |
+| `get_case` | `case_id: int` | Look up an onboarding case by case ID. Raises `ToolError` if not found. |
+| `update_case_status` | `case_id: int, status: str, notes: str = None` | Update a case's status. `status` must be one of `submitted`, `it_provisioning`, `manager_review`, `completed`, `cancelled`. Raises `ToolError` for an unknown case or invalid status. |
+| `list_cases` | `status: str = None` | List onboarding cases, optionally filtered by status; omit to list all. |
+
+### Running
+
+```bash
+# stdio transport (default)
+uv run -m mcp_server_kit.onboarding
+
+# HTTP transport
+uv run -m mcp_server_kit.onboarding --transport streamable-http --port 8011
+
+# Custom database paths
+MCP_DB_PATH=/var/data/keys.db ONBOARDING_DB_PATH=/var/data/onboarding.db uv run -m mcp_server_kit.onboarding
+```
+
+---
+
 ## Combined Server (`mcp_server_kit/combined.py`) {#combined-server}
 
-Mounts all five servers into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
+Mounts all seven servers into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
 
 ### URL paths
 
@@ -181,6 +247,8 @@ Mounts all five servers into a single process, each at its own URL path. This is
 | `/wikipedia/mcp` | Wikipedia server |
 | `/weather/mcp` | Weather server |
 | `/messaging/mcp` | Messaging server (Twilio SMS + SendGrid email) |
+| `/pto/mcp` | PTO server |
+| `/onboarding/mcp` | Onboarding server |
 
 ### How it works
 

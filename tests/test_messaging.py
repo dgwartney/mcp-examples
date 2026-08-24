@@ -309,11 +309,30 @@ class TestSendEmail:
                 to="alice@example.com", subject="", plain_text="hello"
             )
 
-    def test_empty_plain_text_raises_tool_error(self, server):
-        with pytest.raises(ToolError, match="plain_text body must not be empty"):
-            _tool_fn(server, "send_email")(
-                to="alice@example.com", subject="Hi", plain_text=""
-            )
+    def test_missing_plain_text_and_html_raises_tool_error(self, server):
+        with pytest.raises(
+            ToolError, match="At least one of plain_text or html must be provided"
+        ):
+            _tool_fn(server, "send_email")(to="alice@example.com", subject="Hi")
+
+    def test_success_html_only(self, server):
+        server._http.post.return_value = _resp(
+            {}, status=202, headers={"X-Message-Id": "msg123"}
+        )
+        result = _tool_fn(server, "send_email")(
+            to="alice@example.com", subject="Hi", html="<p>hello</p>"
+        )
+        assert result == {"message_id": "msg123", "status_code": 202}
+
+    def test_html_only_payload_has_one_content_entry(self, server):
+        server._http.post.return_value = _resp({}, status=202)
+        _tool_fn(server, "send_email")(
+            to="alice@example.com", subject="Hi", html="<p>hello</p>"
+        )
+        payload = server._http.post.call_args[1]["json"]
+        assert payload["content"] == [
+            {"type": "text/html", "value": "<p>hello</p>"}
+        ]
 
     def test_sendgrid_error_with_errors_list(self, server):
         server._http.post.return_value = _resp(

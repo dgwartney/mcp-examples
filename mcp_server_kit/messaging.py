@@ -121,12 +121,14 @@ class MessagingMCPServer(AuthenticatedMCPServer):
 
         @self.mcp.tool(
             description=(
-                "Send an email via SendGrid. Supports plain-text and HTML content. "
+                "Send an email via SendGrid. Supports plain-text and HTML content; "
+                "at least one of plain_text or html must be provided. "
                 "to: recipient email address. "
                 "subject: email subject line. "
-                "plain_text: plain-text version of the email body. "
-                "html: (optional) HTML version of the email body; if provided the "
-                "message is sent as multipart/alternative so mail clients can choose. "
+                "plain_text: (optional) plain-text version of the email body. "
+                "html: (optional) HTML version of the email body; if both are "
+                "provided the message is sent as multipart/alternative so mail "
+                "clients can choose. "
                 "to_name: (optional) display name for the recipient. "
                 "from_email: (optional) override the default SENDGRID_FROM_EMAIL. "
                 "from_name: (optional) override the default SENDGRID_FROM_NAME. "
@@ -136,7 +138,7 @@ class MessagingMCPServer(AuthenticatedMCPServer):
         def send_email(
             to: str,
             subject: str,
-            plain_text: str,
+            plain_text: Optional[str] = None,
             html: Optional[str] = None,
             to_name: Optional[str] = None,
             from_email: Optional[str] = None,
@@ -145,13 +147,14 @@ class MessagingMCPServer(AuthenticatedMCPServer):
             """
             Send an email via the SendGrid v3 Mail Send API.
 
-            If ``html`` is supplied the message contains both a text/plain and a
-            text/html part (multipart/alternative). Otherwise only text/plain is sent.
+            At least one of ``plain_text`` or ``html`` must be supplied. If both
+            are given the message contains a text/plain and a text/html part
+            (multipart/alternative); otherwise only the supplied part is sent.
 
             Args:
                 to: Recipient email address.
                 subject: Email subject line.
-                plain_text: Plain-text body.
+                plain_text: Optional plain-text body.
                 html: Optional HTML body.
                 to_name: Optional display name for the recipient.
                 from_email: Sender address; falls back to SENDGRID_FROM_EMAIL.
@@ -175,8 +178,10 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 raise ToolError("Recipient email address must not be empty.")
             if not subject:
                 raise ToolError("Email subject must not be empty.")
-            if not plain_text:
-                raise ToolError("plain_text body must not be empty.")
+            if not plain_text and not html:
+                raise ToolError(
+                    "At least one of plain_text or html must be provided."
+                )
 
             sender_name = from_name or self._sendgrid_from_name
             to_entry: dict = {"email": to}
@@ -187,7 +192,9 @@ class MessagingMCPServer(AuthenticatedMCPServer):
             if sender_name:
                 from_entry["name"] = sender_name
 
-            content = [{"type": "text/plain", "value": plain_text}]
+            content = []
+            if plain_text:
+                content.append({"type": "text/plain", "value": plain_text})
             if html:
                 content.append({"type": "text/html", "value": html})
 

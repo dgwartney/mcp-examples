@@ -468,11 +468,15 @@ class ContactDatabaseManager:
             if close:
                 conn.close()
 
+    def _row_to_dict(self, columns: list[str], row: tuple) -> dict:
+        """Convert a single row tuple to a dict keyed by column name, Password included."""
+        return dict(zip(columns, row))
+
     def _rows_to_dicts(self, cursor: sqlite3.Cursor) -> list[dict]:
         """Convert cursor results to a list of dicts, excluding the Password column."""
         columns = [desc[0] for desc in cursor.description]
         return [
-            {k: v for k, v in zip(columns, row) if k != "Password"}
+            {k: v for k, v in self._row_to_dict(columns, row).items() if k != "Password"}
             for row in cursor.fetchall()
         ]
 
@@ -560,6 +564,10 @@ class ContactDatabaseManager:
         """
         Authenticate a contact by email and password.
 
+        Uses ``_row_to_dict`` rather than ``_rows_to_dicts`` because it needs
+        the ``Password`` hash to verify against before stripping it from the
+        returned record; ``_rows_to_dicts`` always excludes ``Password``.
+
         Args:
             email: Contact email address.
             password: Contact password.
@@ -577,7 +585,7 @@ class ContactDatabaseManager:
             row = cursor.fetchone()
             if row is None:
                 return None
-            record = dict(zip(columns, row))
+            record = self._row_to_dict(columns, row)
             stored_hash = record.pop("Password", None)
             if not stored_hash or not _verify_password(password, stored_hash):
                 return None

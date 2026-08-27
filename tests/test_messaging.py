@@ -15,7 +15,7 @@ import pytest
 from fastmcp.exceptions import ToolError
 
 from mcp_server_kit.database import DatabaseManager
-from mcp_server_kit.messaging import MessagingMCPServer
+from mcp_server_kit.messaging import MessagingMCPServer, _is_valid_email
 
 
 def _tool_fn(server, name):
@@ -77,6 +77,35 @@ def _resp(data, status=200, headers=None):
 # ---------------------------------------------------------------------------
 # Initialisation
 # ---------------------------------------------------------------------------
+
+
+class TestIsValidEmail:
+
+    @pytest.mark.parametrize(
+        "email",
+        [
+            "alice@example.com",
+            "alice.bob+tag@example.co.uk",
+            "a@b.co",
+        ],
+    )
+    def test_accepts_plausible_addresses(self, email):
+        assert _is_valid_email(email) is True
+
+    @pytest.mark.parametrize(
+        "email",
+        [
+            "",
+            "not-an-email",
+            "missing-domain-dot@example",
+            "no-at-sign.example.com",
+            "spaces in@example.com",
+            "@example.com",
+            "alice@",
+        ],
+    )
+    def test_rejects_malformed_addresses(self, email):
+        assert _is_valid_email(email) is False
 
 
 class TestMessagingMCPServerInit:
@@ -364,9 +393,28 @@ class TestSendEmail:
                 to="alice@example.com", subject="Hi", plain_text="hello"
             )
 
+    def test_no_sender_email_not_masked_by_recipient_error(self, server):
+        """A missing sender must be reported even if `to` is also invalid."""
+        server._sendgrid_from_email = ""
+        with pytest.raises(ToolError, match="No sender email"):
+            _tool_fn(server, "send_email")(to="", subject="Hi", plain_text="hello")
+
     def test_empty_recipient_raises_tool_error(self, server):
         with pytest.raises(ToolError, match="Recipient email"):
             _tool_fn(server, "send_email")(to="", subject="Hi", plain_text="hello")
+
+    def test_malformed_recipient_raises_tool_error(self, server):
+        with pytest.raises(ToolError, match="not a valid email address"):
+            _tool_fn(server, "send_email")(
+                to="not-an-email", subject="Hi", plain_text="hello"
+            )
+
+    def test_malformed_sender_raises_tool_error(self, server):
+        server._sendgrid_from_email = "not-an-email"
+        with pytest.raises(ToolError, match="not a valid email address"):
+            _tool_fn(server, "send_email")(
+                to="alice@example.com", subject="Hi", plain_text="hello"
+            )
 
     def test_empty_subject_raises_tool_error(self, server):
         with pytest.raises(ToolError, match="subject must not be empty"):
@@ -526,9 +574,28 @@ class TestSendEmailTemplate:
                 to="alice@example.com", template_id="d-abc123"
             )
 
+    def test_no_sender_email_not_masked_by_recipient_error(self, server):
+        """A missing sender must be reported even if `to` is also invalid."""
+        server._sendgrid_from_email = ""
+        with pytest.raises(ToolError, match="No sender email"):
+            _tool_fn(server, "send_email_template")(to="", template_id="d-abc123")
+
     def test_empty_recipient_raises_tool_error(self, server):
         with pytest.raises(ToolError, match="Recipient email"):
             _tool_fn(server, "send_email_template")(to="", template_id="d-abc123")
+
+    def test_malformed_recipient_raises_tool_error(self, server):
+        with pytest.raises(ToolError, match="not a valid email address"):
+            _tool_fn(server, "send_email_template")(
+                to="not-an-email", template_id="d-abc123"
+            )
+
+    def test_malformed_sender_raises_tool_error(self, server):
+        server._sendgrid_from_email = "not-an-email"
+        with pytest.raises(ToolError, match="not a valid email address"):
+            _tool_fn(server, "send_email_template")(
+                to="alice@example.com", template_id="d-abc123"
+            )
 
     def test_empty_template_id_raises_tool_error(self, server):
         with pytest.raises(ToolError, match="must not be empty"):

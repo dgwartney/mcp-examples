@@ -30,6 +30,7 @@ Example:
 
 import json
 import os
+import re
 from typing import Optional
 
 import httpx
@@ -39,6 +40,17 @@ from mcp_server_kit.base import AuthenticatedMCPServer, lazy_module_instances
 
 _TWILIO_BASE = "https://api.twilio.com/2010-04-01"
 _SENDGRID_SEND_URL = "https://api.sendgrid.com/v3/mail/send"
+
+# Rudimentary RFC 5322 addr-spec check — not a full grammar implementation
+# (RFC 5322's actual grammar is far more permissive), but enough to catch
+# obviously malformed addresses (missing "@", missing domain, embedded
+# whitespace) locally instead of spending a SendGrid API call to discover them.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _is_valid_email(email: str) -> bool:
+    """Return True if ``email`` has a plausible addr-spec shape."""
+    return bool(_EMAIL_RE.match(email))
 
 
 class MessagingMCPServer(AuthenticatedMCPServer):
@@ -206,10 +218,16 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 Dict with keys: message_id, status_code.
 
             Raises:
-                ToolError: If credentials are missing or the SendGrid API returns
-                           an error.
+                ToolError: If credentials are missing, to/from_email are not
+                           validly-shaped email addresses, or the SendGrid
+                           API returns an error.
             """
             self._check_sendgrid_creds()
+            # Validate the sender before any per-call input, so a server
+            # misconfiguration (no default sender, no override) is always
+            # reported rather than being masked by an unrelated recipient
+            # or content error.
+            from_entry = self._sendgrid_from_entry(from_email, from_name)
             if not to:
                 raise ToolError("Recipient email address must not be empty.")
             if not subject:
@@ -219,7 +237,6 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                     "At least one of plain_text or html must be provided."
                 )
 
-            from_entry = self._sendgrid_from_entry(from_email, from_name)
             to_entry = self._sendgrid_to_entry(to, to_name)
 
             content = []
@@ -285,6 +302,11 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                            the SendGrid API returns an error.
             """
             self._check_sendgrid_creds()
+            # Validate the sender before any per-call input, so a server
+            # misconfiguration (no default sender, no override) is always
+            # reported rather than being masked by an unrelated recipient
+            # or template error.
+            from_entry = self._sendgrid_from_entry(from_email, from_name)
             if not to:
                 raise ToolError("Recipient email address must not be empty.")
             if not template_id:
@@ -301,7 +323,6 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                     "dynamic_template_data must be a dict of variable name/value pairs."
                 )
 
-            from_entry = self._sendgrid_from_entry(from_email, from_name)
             to_entry = self._sendgrid_to_entry(to, to_name)
 
             personalization: dict = {
@@ -368,6 +389,8 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 "No sender email provided. Pass from_email or set "
                 "the SENDGRID_FROM_EMAIL environment variable."
             )
+        if not _is_valid_email(sender_email):
+            raise ToolError(f"Sender email '{sender_email}' is not a valid email address.")
         entry: dict = {"email": sender_email}
         sender_name = from_name or self._sendgrid_from_name
         if sender_name:
@@ -377,6 +400,8 @@ class MessagingMCPServer(AuthenticatedMCPServer):
     @staticmethod
     def _sendgrid_to_entry(to: str, to_name: Optional[str]) -> dict:
         """Build a SendGrid recipient object."""
+        if not _is_valid_email(to):
+            raise ToolError(f"Recipient email '{to}' is not a valid email address.")
         entry: dict = {"email": to}
         if to_name:
             entry["name"] = to_name

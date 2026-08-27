@@ -21,6 +21,10 @@ from fastmcp import FastMCP
 from starlette.middleware import Middleware as StarletteMiddleware
 
 from mcp_server_kit.database import DatabaseManager
+from mcp_server_kit.logging_middleware import (
+    ToolCallLoggingMiddleware,
+    configure_logging,
+)
 from mcp_server_kit.middleware import ApiKeyMiddleware
 
 
@@ -56,7 +60,9 @@ class AuthenticatedMCPServer(ABC):
         self.db_manager = DatabaseManager(db_path)
         self.db_manager.init_db()
 
+        configure_logging()
         self.mcp = FastMCP(name)
+        self.mcp.add_middleware(ToolCallLoggingMiddleware())
         self._http_middleware = [
             StarletteMiddleware(ApiKeyMiddleware, db_manager=self.db_manager)
         ]

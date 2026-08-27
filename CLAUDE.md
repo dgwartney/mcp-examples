@@ -112,3 +112,15 @@ a first-time contributor, not architecture changes.
   once they exist. Add a key tier/scope (e.g. an `is_admin` column or a distinct admin
   key table) and gate the new CRUD tools/endpoints on it, separate from the read-only
   key used for `search_by_*` and similar tools.
+- **Fix `test_weather.py` isolation from `OPENWEATHER_API_KEY`** — the
+  `server_no_key` fixture (`tests/test_weather.py`) passes `api_key=""` to
+  `WeatherMCPServer`, but `WeatherMCPServer.__init__`
+  (`mcp_server_kit/weather.py`) does
+  `self._api_key = api_key or os.environ.get("OPENWEATHER_API_KEY", "")`, so
+  an empty string falls through to a real `OPENWEATHER_API_KEY` if one is set
+  in the shell running the tests. This makes
+  `TestGetCurrentWeather`/`TestGetForecast`/`TestGetAirQuality
+  ::test_missing_api_key_raises_tool_error` fail or pass depending on the
+  developer's local environment rather than the test's own setup. Fix by
+  adding `monkeypatch.delenv("OPENWEATHER_API_KEY", raising=False)` to the
+  `server_no_key` (and/or `server`) fixture.

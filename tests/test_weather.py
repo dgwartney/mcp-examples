@@ -41,6 +41,11 @@ def server(tmp_path):
 
 @pytest.fixture
 def server_no_key(tmp_path):
+    # TODO: not isolated from the environment — WeatherMCPServer falls back to
+    # OPENWEATHER_API_KEY when api_key="" is falsy, so test_missing_api_key_*
+    # tests below fail/pass depending on the developer's shell. Add
+    # monkeypatch.delenv("OPENWEATHER_API_KEY", raising=False) here. See
+    # CLAUDE.md TODO — cleanup.
     db = str(tmp_path / "keys.db")
     s = WeatherMCPServer(db_path=db, api_key="")
     s._http = MagicMock()

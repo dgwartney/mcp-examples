@@ -280,11 +280,27 @@ class TestSendSmsTemplate:
                 to="+15551234567", content_sid="XYZ123"
             )
 
-    def test_non_dict_content_variables_raises_tool_error(self, server):
-        with pytest.raises(ToolError, match="content_variables must be a dict"):
+    def test_invalid_json_content_variables_raises_tool_error(self, server):
+        with pytest.raises(ToolError, match="content_variables is not valid JSON"):
             _tool_fn(server, "send_sms_template")(
                 to="+15551234567", content_sid="HX123", content_variables="not-a-dict"
             )
+
+    def test_non_dict_json_content_variables_raises_tool_error(self, server):
+        with pytest.raises(ToolError, match="content_variables must be a dict"):
+            _tool_fn(server, "send_sms_template")(
+                to="+15551234567", content_sid="HX123", content_variables="[1, 2]"
+            )
+
+    def test_json_string_content_variables_is_parsed(self, server):
+        server._http.post.return_value = _resp({"sid": "SM1", "status": "queued"})
+        _tool_fn(server, "send_sms_template")(
+            to="+15551234567",
+            content_sid="HX123",
+            content_variables='{"1": "Alice"}',
+        )
+        kwargs = server._http.post.call_args[1]
+        assert json.loads(kwargs["data"]["ContentVariables"]) == {"1": "Alice"}
 
     def test_non_serializable_content_variables_raises_tool_error(self, server):
         with pytest.raises(ToolError, match="JSON-serializable"):
@@ -677,15 +693,37 @@ class TestSendEmailTemplate:
                 to="alice@example.com", template_id="abc123"
             )
 
-    def test_non_dict_dynamic_template_data_raises_tool_error(self, server):
+    def test_invalid_json_dynamic_template_data_raises_tool_error(self, server):
         with pytest.raises(
-            ToolError, match="dynamic_template_data must be a dict"
+            ToolError, match="dynamic_template_data is not valid JSON"
         ):
             _tool_fn(server, "send_email_template")(
                 to="alice@example.com",
                 template_id="d-abc123",
                 dynamic_template_data="not-a-dict",
             )
+
+    def test_non_dict_json_dynamic_template_data_raises_tool_error(self, server):
+        with pytest.raises(
+            ToolError, match="dynamic_template_data must be a dict"
+        ):
+            _tool_fn(server, "send_email_template")(
+                to="alice@example.com",
+                template_id="d-abc123",
+                dynamic_template_data="[1, 2]",
+            )
+
+    def test_json_string_dynamic_template_data_is_parsed(self, server):
+        server._http.post.return_value = _resp({}, status=202)
+        _tool_fn(server, "send_email_template")(
+            to="alice@example.com",
+            template_id="d-abc123",
+            dynamic_template_data='{"first_name": "Alice"}',
+        )
+        payload = server._http.post.call_args[1]["json"]
+        assert payload["personalizations"][0]["dynamic_template_data"] == {
+            "first_name": "Alice"
+        }
 
     def test_non_serializable_dynamic_template_data_raises_tool_error(self, server):
         with pytest.raises(ToolError, match="JSON-serializable"):

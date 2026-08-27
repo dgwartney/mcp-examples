@@ -31,7 +31,7 @@ Example:
 import json
 import os
 import re
-from typing import Optional
+from typing import Optional, Union
 
 import httpx
 from fastmcp.exceptions import ToolError
@@ -51,6 +51,27 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 def _is_valid_email(email: str) -> bool:
     """Return True if ``email`` has a plausible addr-spec shape."""
     return bool(_EMAIL_RE.match(email))
+
+
+def _coerce_dict_param(name: str, value: Optional[Union[dict, str]]) -> Optional[dict]:
+    """Accept a dict as-is, or parse a JSON-encoded string into one.
+
+    Some MCP callers (e.g. agent platforms that template tool arguments as
+    strings) send object-typed parameters as a JSON-encoded string instead
+    of a native object. FastMCP's schema validation would otherwise reject
+    that before the tool body runs, so callers get an opaque pydantic error
+    instead of a clear one. Accepting both here and normalizing to a dict
+    makes the tool robust to either calling convention.
+    """
+    if value is None or isinstance(value, dict):
+        return value
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ToolError(f"{name} is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ToolError(f"{name} must be a dict of variable name/value pairs.")
+    return parsed
 
 
 class MessagingMCPServer(AuthenticatedMCPServer):
@@ -114,8 +135,9 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 "Send an SMS using a pre-approved Twilio Content API template. "
                 "to: destination phone number in E.164 format (e.g. +15551234567). "
                 "content_sid: Twilio Content template SID (starts with 'HX'). "
-                "content_variables: (optional) dict mapping template variable names "
-                "(as strings) to their substitution values, e.g. "
+                "content_variables: (optional) dict (or JSON-encoded string of a dict) "
+                "mapping template variable names (as strings) to their "
+                "substitution values, e.g. "
                 '{"1": "Alice", "2": "Tuesday"}. '
                 "Returns the Twilio message SID and delivery status on success."
             )
@@ -123,7 +145,7 @@ class MessagingMCPServer(AuthenticatedMCPServer):
         def send_sms_template(
             to: str,
             content_sid: str,
-            content_variables: Optional[dict] = None,
+            content_variables: Optional[Union[dict, str]] = None,
         ) -> dict:
             """
             Send a templated SMS via the Twilio Messages REST API using the
@@ -154,10 +176,7 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                     f"Content SID '{content_sid}' must be a Twilio Content template SID "
                     "(starts with 'HX')."
                 )
-            if content_variables is not None and not isinstance(content_variables, dict):
-                raise ToolError(
-                    "content_variables must be a dict of variable name/value pairs."
-                )
+            content_variables = _coerce_dict_param("content_variables", content_variables)
             try:
                 encoded_variables = json.dumps(content_variables or {})
             except TypeError as exc:
@@ -269,8 +288,9 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 "Send an email using a pre-approved SendGrid dynamic template. "
                 "to: recipient email address. "
                 "template_id: SendGrid dynamic template ID (starts with 'd-'). "
-                "dynamic_template_data: (optional) dict of template variable "
-                "substitutions, e.g. {\"first_name\": \"Alice\"}. "
+                "dynamic_template_data: (optional) dict (or JSON-encoded string of a "
+                "dict) of template variable substitutions, e.g. "
+                "{\"first_name\": \"Alice\"}. "
                 "to_name: (optional) display name for the recipient. "
                 "from_email: (optional) override the default SENDGRID_FROM_EMAIL. "
                 "from_name: (optional) override the default SENDGRID_FROM_NAME. "
@@ -284,7 +304,7 @@ class MessagingMCPServer(AuthenticatedMCPServer):
         def send_email_template(
             to: str,
             template_id: str,
-            dynamic_template_data: Optional[dict] = None,
+            dynamic_template_data: Optional[Union[dict, str]] = None,
             to_name: Optional[str] = None,
             from_email: Optional[str] = None,
             from_name: Optional[str] = None,
@@ -333,12 +353,9 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                     f"Template ID '{template_id}' must be a SendGrid dynamic "
                     "template ID (starts with 'd-')."
                 )
-            if dynamic_template_data is not None and not isinstance(
-                dynamic_template_data, dict
-            ):
-                raise ToolError(
-                    "dynamic_template_data must be a dict of variable name/value pairs."
-                )
+            dynamic_template_data = _coerce_dict_param(
+                "dynamic_template_data", dynamic_template_data
+            )
 
             to_entry = self._sendgrid_to_entry(to, to_name)
             reply_to_entry = self._sendgrid_reply_to_entry(reply_to, reply_to_name)

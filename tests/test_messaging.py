@@ -124,6 +124,10 @@ class TestMessagingMCPServerInit:
             "send_email_template",
         }
 
+    def test_close_closes_http_client(self, server):
+        server.close()
+        server._http.close.assert_called_once()
+
     def test_db_manager_created(self, server):
         assert isinstance(server.db_manager, DatabaseManager)
 

@@ -126,6 +126,10 @@ class TestWeatherMCPServerInit:
         s = WeatherMCPServer(db_path=temp_db_path, api_key="k")
         assert isinstance(s.db_manager, DatabaseManager)
 
+    def test_close_closes_http_client(self, server):
+        server.close()
+        server._http.close.assert_called_once()
+
     def test_api_key_from_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENWEATHER_API_KEY", "env-key")
         s = WeatherMCPServer(db_path=str(tmp_path / "k.db"))

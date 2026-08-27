@@ -323,10 +323,6 @@ class WeatherMCPServer(AuthenticatedMCPServer):
                 "pm10": components.get("pm10"),
             }
 
-    def close(self) -> None:
-        """Close the underlying ``httpx.Client``."""
-        self._http.close()
-
     def _check_api_key(self) -> None:
         if not self._api_key:
             raise ToolError(

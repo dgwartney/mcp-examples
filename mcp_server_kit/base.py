@@ -71,13 +71,18 @@ class AuthenticatedMCPServer(ABC):
         """
         Release any resources held by the server (e.g. HTTP clients).
 
-        No-op by default. Subclasses that open an ``httpx.Client`` or other
-        closeable resource in ``__init__`` should override this to close it.
+        Closes ``self._http`` if a subclass set one in ``__init__`` (the
+        common case for servers that wrap an external HTTP API); otherwise
+        a no-op. Subclasses with other closeable resources, or an HTTP
+        client under a different attribute name, should override this.
         ``run()`` calls this automatically on shutdown for a standalone
         server; callers that own multiple server instances directly (e.g.
         ``combined.py``, which never calls ``run()``) must call this
         themselves during shutdown to avoid leaking connection pools.
         """
+        http_client = getattr(self, "_http", None)
+        if http_client is not None:
+            http_client.close()
 
     def run(self, **kwargs) -> None:
         """

@@ -340,10 +340,6 @@ class MessagingMCPServer(AuthenticatedMCPServer):
 
             return self._send_sendgrid_email(payload)
 
-    def close(self) -> None:
-        """Close the underlying ``httpx.Client``."""
-        self._http.close()
-
     def _send_twilio_message(self, data: dict) -> dict:
         """
         POST a message to the Twilio Messages API and normalize the response.

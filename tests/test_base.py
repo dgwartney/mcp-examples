@@ -7,7 +7,7 @@ Author:
 
 import os
 import tempfile
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -18,6 +18,17 @@ from mcp_server_kit.middleware import ApiKeyMiddleware
 
 class StubMCPServer(AuthenticatedMCPServer):
     """Minimal concrete subclass for testing the abstract base class."""
+
+    def _register_tools(self):
+        pass
+
+
+class StubMCPServerWithHttp(AuthenticatedMCPServer):
+    """Subclass with an ``_http`` attribute, like messaging/weather/wikipedia."""
+
+    def __init__(self, *args, **kwargs):
+        self._http = MagicMock()
+        super().__init__(*args, **kwargs)
 
     def _register_tools(self):
         pass
@@ -98,6 +109,19 @@ class TestAuthenticatedMCPServer:
             assert hasattr(server, '_http_middleware')
             assert len(server._http_middleware) > 0
             assert server._http_middleware[0].cls is ApiKeyMiddleware
+
+    def test_close_is_noop_without_http_attribute(self, temp_db_path):
+        """Test that close() does nothing when the subclass has no _http."""
+        with patch.object(DatabaseManager, 'init_db'):
+            server = StubMCPServer(db_path=temp_db_path)
+            server.close()  # must not raise
+
+    def test_close_closes_http_attribute(self, temp_db_path):
+        """Test that close() closes self._http when a subclass sets one."""
+        with patch.object(DatabaseManager, 'init_db'):
+            server = StubMCPServerWithHttp(db_path=temp_db_path)
+            server.close()
+            server._http.close.assert_called_once()
 
     def test_run_method_exists(self, temp_db_path):
         """Test that run method exists and is callable."""

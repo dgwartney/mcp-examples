@@ -82,6 +82,9 @@ class DatabaseManager:
         Compares against every stored key using ``secrets.compare_digest``
         (constant-time per comparison) rather than a SQL equality lookup, so
         the response time does not leak how much of a guessed key is correct.
+        Keys are compared as UTF-8 bytes rather than ``str`` because
+        ``compare_digest`` raises ``TypeError`` on non-ASCII ``str`` input,
+        which would otherwise surface as a 500 instead of a 401.
 
         Args:
             api_key (Optional[str]): The API key to validate. Can be None.
@@ -100,4 +103,8 @@ class DatabaseManager:
             rows = conn.execute("SELECT key FROM api_keys").fetchall()
         finally:
             conn.close()
-        return any(secrets.compare_digest(api_key, row[0]) for row in rows)
+        api_key_bytes = api_key.encode("utf-8")
+        return any(
+            secrets.compare_digest(api_key_bytes, row[0].encode("utf-8"))
+            for row in rows
+        )

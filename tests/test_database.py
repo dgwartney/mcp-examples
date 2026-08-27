@@ -112,6 +112,22 @@ class TestDatabaseManager:
         db_manager.init_db()
         assert db_manager.validate_key("") is False
 
+    def test_validate_key_non_ascii_invalid(self, db_manager, temp_db_path):
+        """Test validate_key returns False (not TypeError) for non-ASCII keys."""
+        db_manager.init_db()
+        assert db_manager.validate_key("café-not-a-real-key-🔑") is False
+
+    def test_validate_key_non_ascii_valid(self, db_manager, temp_db_path):
+        """Test validate_key returns True when a stored key is non-ASCII."""
+        conn = sqlite3.connect(temp_db_path)
+        test_key = "café-key-🔑"
+        conn.execute("CREATE TABLE IF NOT EXISTS api_keys (id INTEGER PRIMARY KEY, key TEXT UNIQUE NOT NULL)")
+        conn.execute("INSERT INTO api_keys (key) VALUES (?)", (test_key,))
+        conn.commit()
+        conn.close()
+
+        assert db_manager.validate_key(test_key) is True
+
     def test_database_path_customization(self):
         """Test that custom database paths are respected."""
         custom_path = "/tmp/custom_test.db"

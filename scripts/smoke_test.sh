@@ -501,10 +501,17 @@ then
     fi
 
     if [ -n "$SMOKE_EMAIL" ]; then
-      gate "Send a real email to $SMOKE_EMAIL now?" n && run_check "6.2" "send_email" "message_id; email arrives" \
-        call_tool "$MESSAGING_URL" send_email "{\"to\": \"$SMOKE_EMAIL\", \"subject\": \"mcp-server-kit smoke test\", \"plain_text\": \"hello\"}"
+      gate "Send a real email to $SMOKE_EMAIL now?" n && run_check "6.2" "send_email" "message_id; email arrives with Reply-To set" \
+        call_tool "$MESSAGING_URL" send_email "{\"to\": \"$SMOKE_EMAIL\", \"subject\": \"mcp-server-kit smoke test\", \"plain_text\": \"hello\", \"reply_to\": \"$SMOKE_EMAIL\", \"reply_to_name\": \"Smoke Test\"}"
     else
       skip_check "6.2" "send_email" "no email address provided"
+    fi
+
+    if [ -n "$SMOKE_EMAIL" ] && [ -n "${SENDGRID_TEST_TEMPLATE_ID:-}" ]; then
+      gate "Send a real templated email to $SMOKE_EMAIL using $SENDGRID_TEST_TEMPLATE_ID now?" n && run_check "6.5" "send_email_template" "message_id; templated email arrives rendered" \
+        call_tool "$MESSAGING_URL" send_email_template "{\"to\": \"$SMOKE_EMAIL\", \"template_id\": \"$SENDGRID_TEST_TEMPLATE_ID\", \"dynamic_template_data\": {\"first_name\": \"Ada\"}}"
+    else
+      skip_check "6.5" "send_email_template" "no SENDGRID_TEST_TEMPLATE_ID set (or no email address provided)"
     fi
 
     run_check "6.3" "send_sms (invalid E.164 number)" "TOOL_ERROR: E.164 format required, no SMS sent" \

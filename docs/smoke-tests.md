@@ -265,6 +265,8 @@ small Twilio cost per SMS.
 ```bash
 export TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_MESSAGING_SERVICE_SID=<mg_sid>
 export SENDGRID_API_KEY=<key> SENDGRID_FROM_EMAIL=<verified_sender>
+# Optional — only needed for check 6.5 (send_email_template); leave unset to skip it.
+export SENDGRID_TEST_TEMPLATE_ID=<your approved SendGrid dynamic template ID>
 uv run -m mcp_server_kit.messaging --transport streamable-http --port 8000 &
 wait_for_server http://localhost:8000/mcp
 API_KEY=$(sqlite3 "$MCP_DB_PATH" "SELECT key FROM api_keys LIMIT 1;")
@@ -273,10 +275,10 @@ API_KEY=$(sqlite3 "$MCP_DB_PATH" "SELECT key FROM api_keys LIMIT 1;")
 | # | Call | Expected |
 |---|------|----------|
 | 6.1 | `call_tool http://localhost:8000/mcp send_sms '{"to": "+1YOURNUMBER", "body": "Smoke test"}'` | Dict with `sid` and `status: queued`; SMS arrives on the phone |
-| 6.2 | `call_tool http://localhost:8000/mcp send_email '{"to": "you@example.com", "subject": "Smoke test", "plain_text": "hello"}'` | Dict with `message_id`; email arrives |
+| 6.2 | `call_tool http://localhost:8000/mcp send_email '{"to": "you@example.com", "subject": "Smoke test", "plain_text": "hello", "reply_to": "you@example.com", "reply_to_name": "Smoke Test"}'` | Dict with `message_id`; email arrives with Reply-To set to the given address |
 | 6.3 | `call_tool http://localhost:8000/mcp send_sms '{"to": "5551234567", "body": "x"}'` | Tool error: E.164 format required (no SMS sent — confirms validation runs before the Twilio call) |
 | 6.4 | *(only if you have an approved Content template)* `call_tool http://localhost:8000/mcp send_sms_template '{"to": "+1YOURNUMBER", "content_sid": "HXxxxxxxxx", "content_variables": {"1": "Ada"}}'` | Dict with `sid`; templated SMS arrives with the variable substituted |
-| 6.5 | *(only if you have an approved dynamic template)* `call_tool http://localhost:8000/mcp send_email_template '{"to": "you@example.com", "template_id": "d-xxxxxxxx", "dynamic_template_data": {"first_name": "Ada"}}'` | Dict with `message_id`; templated email arrives rendered |
+| 6.5 | *(only if you have an approved dynamic template — set `SENDGRID_TEST_TEMPLATE_ID`, or substitute the ID directly)* `call_tool http://localhost:8000/mcp send_email_template "{\"to\": \"you@example.com\", \"template_id\": \"$SENDGRID_TEST_TEMPLATE_ID\", \"dynamic_template_data\": {\"first_name\": \"Ada\"}}"` | Dict with `message_id`; templated email arrives rendered |
 | 6.6 | `call_tool http://localhost:8000/mcp send_sms_template '{"to": "+1YOURNUMBER", "content_sid": "HXabc", "content_variables": {"1": "ok"}}'` with `TWILIO_ACCOUNT_SID` unset | Tool error: `Missing Twilio credentials` (no request reaches Twilio) |
 
 ```bash

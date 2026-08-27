@@ -186,6 +186,9 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 "to_name: (optional) display name for the recipient. "
                 "from_email: (optional) override the default SENDGRID_FROM_EMAIL. "
                 "from_name: (optional) override the default SENDGRID_FROM_NAME. "
+                "reply_to: (optional) email address replies should be sent to, "
+                "if different from the sender. "
+                "reply_to_name: (optional) display name for reply_to. "
                 "Returns the SendGrid message ID on success."
             )
         )
@@ -197,6 +200,8 @@ class MessagingMCPServer(AuthenticatedMCPServer):
             to_name: Optional[str] = None,
             from_email: Optional[str] = None,
             from_name: Optional[str] = None,
+            reply_to: Optional[str] = None,
+            reply_to_name: Optional[str] = None,
         ) -> dict:
             """
             Send an email via the SendGrid v3 Mail Send API.
@@ -213,14 +218,16 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 to_name: Optional display name for the recipient.
                 from_email: Sender address; falls back to SENDGRID_FROM_EMAIL.
                 from_name: Sender display name; falls back to SENDGRID_FROM_NAME.
+                reply_to: Optional reply-to address, if different from the sender.
+                reply_to_name: Optional display name for reply_to.
 
             Returns:
                 Dict with keys: message_id, status_code.
 
             Raises:
-                ToolError: If credentials are missing, to/from_email are not
-                           validly-shaped email addresses, or the SendGrid
-                           API returns an error.
+                ToolError: If credentials are missing, to/from_email/reply_to
+                           are not validly-shaped email addresses, or the
+                           SendGrid API returns an error.
             """
             self._check_sendgrid_creds()
             # Validate the sender before any per-call input, so a server
@@ -238,6 +245,7 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 )
 
             to_entry = self._sendgrid_to_entry(to, to_name)
+            reply_to_entry = self._sendgrid_reply_to_entry(reply_to, reply_to_name)
 
             content = []
             if plain_text:
@@ -251,6 +259,8 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 "subject": subject,
                 "content": content,
             }
+            if reply_to_entry:
+                payload["reply_to"] = reply_to_entry
 
             return self._send_sendgrid_email(payload)
 
@@ -265,6 +275,9 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 "from_email: (optional) override the default SENDGRID_FROM_EMAIL. "
                 "from_name: (optional) override the default SENDGRID_FROM_NAME. "
                 "subject: (optional) override the template's default subject. "
+                "reply_to: (optional) email address replies should be sent to, "
+                "if different from the sender. "
+                "reply_to_name: (optional) display name for reply_to. "
                 "Returns the SendGrid message ID on success."
             )
         )
@@ -276,6 +289,8 @@ class MessagingMCPServer(AuthenticatedMCPServer):
             from_email: Optional[str] = None,
             from_name: Optional[str] = None,
             subject: Optional[str] = None,
+            reply_to: Optional[str] = None,
+            reply_to_name: Optional[str] = None,
         ) -> dict:
             """
             Send an email via the SendGrid v3 Mail Send API using a dynamic
@@ -292,14 +307,16 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 from_name: Sender display name; falls back to SENDGRID_FROM_NAME.
                 subject: Optional subject override; templates usually supply
                     their own subject.
+                reply_to: Optional reply-to address, if different from the sender.
+                reply_to_name: Optional display name for reply_to.
 
             Returns:
                 Dict with keys: message_id, status_code.
 
             Raises:
-                ToolError: If credentials are missing, to/template_id are
-                           invalid, dynamic_template_data is not a dict, or
-                           the SendGrid API returns an error.
+                ToolError: If credentials are missing, to/template_id/reply_to
+                           are invalid, dynamic_template_data is not a dict,
+                           or the SendGrid API returns an error.
             """
             self._check_sendgrid_creds()
             # Validate the sender before any per-call input, so a server
@@ -324,6 +341,7 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 )
 
             to_entry = self._sendgrid_to_entry(to, to_name)
+            reply_to_entry = self._sendgrid_reply_to_entry(reply_to, reply_to_name)
 
             personalization: dict = {
                 "to": [to_entry],
@@ -337,6 +355,8 @@ class MessagingMCPServer(AuthenticatedMCPServer):
             }
             if subject:
                 payload["subject"] = subject
+            if reply_to_entry:
+                payload["reply_to"] = reply_to_entry
 
             return self._send_sendgrid_email(payload)
 
@@ -401,6 +421,20 @@ class MessagingMCPServer(AuthenticatedMCPServer):
         entry: dict = {"email": to}
         if to_name:
             entry["name"] = to_name
+        return entry
+
+    @staticmethod
+    def _sendgrid_reply_to_entry(
+        reply_to: Optional[str], reply_to_name: Optional[str]
+    ) -> Optional[dict]:
+        """Build a SendGrid ``reply_to`` object, or None if not provided."""
+        if not reply_to:
+            return None
+        if not _is_valid_email(reply_to):
+            raise ToolError(f"Reply-to email '{reply_to}' is not a valid email address.")
+        entry: dict = {"email": reply_to}
+        if reply_to_name:
+            entry["name"] = reply_to_name
         return entry
 
     def _send_sendgrid_email(self, payload: dict) -> dict:

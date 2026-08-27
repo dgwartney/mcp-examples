@@ -371,7 +371,7 @@ curl -s -X POST http://localhost:8000/mcp \
   }'
 ```
 
-**Send a templated email (SendGrid dynamic template):**
+**Send an email with a different Reply-To address:**
 ```bash
 curl -s -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
@@ -381,6 +381,30 @@ curl -s -X POST http://localhost:8000/mcp \
   -d '{
     "jsonrpc": "2.0",
     "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "send_email",
+      "arguments": {
+        "to": "recipient@example.com",
+        "subject": "Hello from MCP",
+        "plain_text": "This is a plain-text email sent via the MCP messaging server.",
+        "reply_to": "support@example.com",
+        "reply_to_name": "Support Team"
+      }
+    }
+  }'
+```
+
+**Send a templated email (SendGrid dynamic template):**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 6,
     "method": "tools/call",
     "params": {
       "name": "send_email_template",

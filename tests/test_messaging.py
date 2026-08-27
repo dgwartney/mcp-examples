@@ -384,6 +384,38 @@ class TestSendEmail:
             "name": "Override",
         }
 
+    def test_reply_to_included_when_provided(self, server):
+        server._http.post.return_value = _resp({}, status=202)
+        _tool_fn(server, "send_email")(
+            to="alice@example.com",
+            subject="Hi",
+            plain_text="hello",
+            reply_to="support@example.com",
+            reply_to_name="Support",
+        )
+        payload = server._http.post.call_args[1]["json"]
+        assert payload["reply_to"] == {
+            "email": "support@example.com",
+            "name": "Support",
+        }
+
+    def test_reply_to_omitted_when_not_provided(self, server):
+        server._http.post.return_value = _resp({}, status=202)
+        _tool_fn(server, "send_email")(
+            to="alice@example.com", subject="Hi", plain_text="hello"
+        )
+        payload = server._http.post.call_args[1]["json"]
+        assert "reply_to" not in payload
+
+    def test_malformed_reply_to_raises_tool_error(self, server):
+        with pytest.raises(ToolError, match="not a valid email address"):
+            _tool_fn(server, "send_email")(
+                to="alice@example.com",
+                subject="Hi",
+                plain_text="hello",
+                reply_to="not-an-email",
+            )
+
     def test_missing_sendgrid_key_raises_tool_error(self, server_no_creds):
         with pytest.raises(ToolError, match="Missing SendGrid credentials"):
             _tool_fn(server_no_creds, "send_email")(
@@ -564,6 +596,36 @@ class TestSendEmailTemplate:
             "email": "override@example.com",
             "name": "Override",
         }
+
+    def test_reply_to_included_when_provided(self, server):
+        server._http.post.return_value = _resp({}, status=202)
+        _tool_fn(server, "send_email_template")(
+            to="alice@example.com",
+            template_id="d-abc123",
+            reply_to="support@example.com",
+            reply_to_name="Support",
+        )
+        payload = server._http.post.call_args[1]["json"]
+        assert payload["reply_to"] == {
+            "email": "support@example.com",
+            "name": "Support",
+        }
+
+    def test_reply_to_omitted_when_not_provided(self, server):
+        server._http.post.return_value = _resp({}, status=202)
+        _tool_fn(server, "send_email_template")(
+            to="alice@example.com", template_id="d-abc123"
+        )
+        payload = server._http.post.call_args[1]["json"]
+        assert "reply_to" not in payload
+
+    def test_malformed_reply_to_raises_tool_error(self, server):
+        with pytest.raises(ToolError, match="not a valid email address"):
+            _tool_fn(server, "send_email_template")(
+                to="alice@example.com",
+                template_id="d-abc123",
+                reply_to="not-an-email",
+            )
 
     def test_missing_sendgrid_key_raises_tool_error(self, server_no_creds):
         with pytest.raises(ToolError, match="Missing SendGrid credentials"):

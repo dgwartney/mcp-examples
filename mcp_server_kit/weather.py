@@ -38,7 +38,7 @@ from fastmcp.exceptions import ToolError
 from mcp_server_kit.base import AuthenticatedMCPServer, lazy_module_instances
 
 _BASE_URL = "https://api.openweathermap.org"
-_GEO_URL = "http://api.openweathermap.org"
+_GEO_URL = "https://api.openweathermap.org"
 _USER_AGENT = "mcp-weather-example/1.0"
 
 _AQI_LABELS = {1: "Good", 2: "Fair", 3: "Moderate", 4: "Poor", 5: "Very Poor"}
@@ -322,6 +322,10 @@ class WeatherMCPServer(AuthenticatedMCPServer):
                 "pm2_5": components.get("pm2_5"),
                 "pm10": components.get("pm10"),
             }
+
+    def close(self) -> None:
+        """Close the underlying ``httpx.Client``."""
+        self._http.close()
 
     def _check_api_key(self) -> None:
         if not self._api_key:

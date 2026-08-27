@@ -256,13 +256,23 @@ print('New key:', key)
 fly ssh console -C "sqlite3 /data/contacts.db 'SELECT Id, FirstName, LastName, Email, AccountName FROM contacts;'"
 
 # Search by last name
-fly ssh console -C "sqlite3 /data/contacts.db \"SELECT * FROM contacts WHERE LastName LIKE '%Bunny%';\""
+fly ssh console -C "sqlite3 /data/contacts.db \"SELECT * FROM contacts WHERE LastName LIKE '%Webb%';\""
 
 # Search by email
-fly ssh console -C "sqlite3 /data/contacts.db \"SELECT * FROM contacts WHERE Email = 'bugs.bunny@acme.com' COLLATE NOCASE;\""
+fly ssh console -C "sqlite3 /data/contacts.db \"SELECT * FROM contacts WHERE Email = 'james.whitfield@meridiancorp.com' COLLATE NOCASE;\""
 
 # Update a contact's password
-fly ssh console -C "sqlite3 /data/contacts.db \"UPDATE contacts SET Password = 'newpassword!' WHERE Email = 'bugs.bunny@acme.com' COLLATE NOCASE;\""
+# The Password column stores a PBKDF2 hash, not plaintext — writing a plaintext
+# value here (e.g. via a raw UPDATE) breaks login for that contact. Hash it
+# first using the app's own hashing function, run from an interactive shell:
+fly ssh console
+#   $ cd /app
+#   $ NEW_HASH=$(uv run python3 -c "
+#   from mcp_server_kit.contact_database import _hash_password
+#   print(_hash_password('newpassword!'))
+#   ")
+#   $ sqlite3 /data/contacts.db "UPDATE contacts SET Password = '$NEW_HASH' WHERE Email = 'james.whitfield@meridiancorp.com' COLLATE NOCASE;"
+#   $ exit
 
 # Count total contacts
 fly ssh console -C "sqlite3 /data/contacts.db 'SELECT COUNT(*) FROM contacts;'"
@@ -287,7 +297,7 @@ fly sftp shell
 
 ### Resetting contacts to seed data
 
-To wipe all contacts and restore the original 20 Warner Bros. characters:
+To wipe all contacts and restore the original 20 fictional contacts:
 
 ```bash
 # Delete the contacts database on the volume

@@ -14,7 +14,7 @@ A toolkit for building authenticated Model Context Protocol (MCP) servers using 
 | **Contact** | `mcp_server_kit/contacts.py` | `search_by_email`, `search_by_last_name`, `search_by_account_id`, `authenticate` |
 | **Wikipedia** | `mcp_server_kit/wikipedia.py` | `search_pages`, `search_titles`, `get_page_summary`, `get_related_pages` |
 | **Weather** | `mcp_server_kit/weather.py` | `get_current_weather`, `get_forecast`, `get_air_quality` |
-| **Messaging** | `mcp_server_kit/messaging.py` | `send_sms`, `send_email` |
+| **Messaging** | `mcp_server_kit/messaging.py` | `send_sms`, `send_sms_template`, `send_email`, `send_email_template` |
 | **Combined** | `mcp_server_kit/combined.py` | All of the above, each at its own path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`, `/messaging/mcp`) |
 
 All servers use API key authentication over HTTP and run locally via stdio. See [docs/servers.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/servers.md) for full details, architecture, and project structure.
@@ -95,6 +95,7 @@ uv run fastmcp dev mcp_server_kit/server.py
 | [docs/clients.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/clients.md) | Built-in mcp-client and curl examples for both servers |
 | [docs/managing-contacts.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/managing-contacts.md) | View, add, update, and delete contacts in the SQLite database |
 | [docs/deployment.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/deployment.md) | Deployment overview and quick links to all provider guides |
+| [docs/tutorial.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/tutorial.md) | Walkthrough for using an already-deployed instance: calling tools, connecting an agent |
 | [docs/deployment/index.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/deployment/index.md) | Provider comparison table with cost, persistence, and availability details |
 | [docs/deployment/local.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/deployment/local.md) | Run the server locally on your own machine |
 | [docs/deployment/ngrok.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/deployment/ngrok.md) | Expose a local server publicly via ngrok tunnel |
@@ -103,6 +104,7 @@ uv run fastmcp dev mcp_server_kit/server.py
 | [docs/deployment/railway.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/deployment/railway.md) | Deploy to Railway ($5 credit/mo, ephemeral filesystem) |
 | [docs/deployment/docker.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/deployment/docker.md) | Self-host with Docker on any VPS (~$4–5/mo, full persistence) |
 | [docs/testing.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/testing.md) | Running the test suite and coverage reports |
+| [docs/smoke-tests.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/smoke-tests.md) | Manual smoke-test checklist to run against a live server before a release |
 | [docs/security.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/security.md) | API key management, database security, header handling |
 | [docs/extending.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/extending.md) | Adding tools, custom auth, serving multiple servers |
 | [docs/troubleshooting.md](https://github.com/dgwartney/mcp-examples/blob/main/docs/troubleshooting.md) | Common errors and fixes |

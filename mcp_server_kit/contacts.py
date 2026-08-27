@@ -3,7 +3,7 @@ FastMCP Server with mock customer contact profile tools.
 
 Demonstrates how to build an MCP server by subclassing
 ``AuthenticatedMCPServer`` and registering tools that query a
-Salesforce-style contact database seeded with Warner Bros. characters.
+Salesforce-style contact database seeded with fictional customer contacts.
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -71,7 +71,13 @@ class ContactMCPServer(AuthenticatedMCPServer):
 
             Returns:
                 List of matching contact records.
+
+            Raises:
+                ToolError: If ``last_name`` is empty (an empty ``LIKE``
+                           pattern would otherwise match every contact).
             """
+            if not last_name.strip():
+                raise ToolError("last_name must not be empty.")
             return contact_db.search_by_last_name(last_name)
 
         @self.mcp.tool(description="Search contacts by email address (case-insensitive exact match)")
@@ -84,7 +90,12 @@ class ContactMCPServer(AuthenticatedMCPServer):
 
             Returns:
                 List of matching contact records.
+
+            Raises:
+                ToolError: If ``email`` is empty.
             """
+            if not email.strip():
+                raise ToolError("email must not be empty.")
             return contact_db.search_by_email(email)
 
         @self.mcp.tool(description="Search contacts by account ID (exact match)")
@@ -97,7 +108,12 @@ class ContactMCPServer(AuthenticatedMCPServer):
 
             Returns:
                 List of matching contact records.
+
+            Raises:
+                ToolError: If ``account_id`` is empty.
             """
+            if not account_id.strip():
+                raise ToolError("account_id must not be empty.")
             return contact_db.search_by_account_id(account_id)
 
         @self.mcp.tool(description="Authenticate a contact by email and password")

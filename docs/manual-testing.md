@@ -118,7 +118,7 @@ from mcp_server_kit.client import MCPClient
 
 async def main():
     client = MCPClient("http://localhost:8000/mcp", os.environ["API_KEY"])
-    result = await client.call_tool("search_by_last_name", {"last_name": "Bunny"})
+    result = await client.call_tool("search_by_last_name", {"last_name": "Webb"})
     print(result.data)
 
 asyncio.run(main())

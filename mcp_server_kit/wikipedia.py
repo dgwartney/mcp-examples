@@ -55,6 +55,10 @@ class WikipediaMCPServer(AuthenticatedMCPServer):
     def _strip_html(self, text: str) -> str:
         return re.sub(r"<[^>]+>", "", text)
 
+    def close(self) -> None:
+        """Close the underlying ``httpx.Client``."""
+        self._http.close()
+
     def _register_tools(self) -> None:
         """Register Wikipedia MCP tools."""
 

@@ -37,7 +37,7 @@ same `AuthenticatedMCPServer` base class:
 | Contact | `mcp_server_kit/contacts.py` | `search_by_last_name`, `search_by_email`, `search_by_account_id`, `authenticate` |
 | Wikipedia | `mcp_server_kit/wikipedia.py` | `search_pages`, `search_titles`, `get_page_summary`, `get_related_pages` |
 | Weather | `mcp_server_kit/weather.py` | `get_current_weather`, `get_forecast`, `get_air_quality` |
-| Messaging | `mcp_server_kit/messaging.py` | `send_sms`, `send_email` |
+| Messaging | `mcp_server_kit/messaging.py` | `send_sms`, `send_sms_template`, `send_email`, `send_email_template` |
 | PTO | `mcp_server_kit/pto.py` | `get_balance`, `get_balance_by_email`, `request_pto`, `list_requests` |
 | Onboarding | `mcp_server_kit/onboarding.py` | `create_case`, `get_case`, `update_case_status`, `list_cases` |
 
@@ -364,11 +364,11 @@ Expected response:
 
 ```json
 {
-  "last_name": "Bunny"
+  "last_name": "Webb"
 }
 ```
 
-Expected response includes a list of matching contact records (e.g. Bugs Bunny, Lola Bunny).
+Expected response includes a list of matching contact records (e.g. Marcus Webb, Eleanor Webster).
 
 ### Via Conversational Interface
 

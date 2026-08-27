@@ -79,6 +79,10 @@ class DatabaseManager:
         """
         Validate an API key against the database.
 
+        Compares against every stored key using ``secrets.compare_digest``
+        (constant-time per comparison) rather than a SQL equality lookup, so
+        the response time does not leak how much of a guessed key is correct.
+
         Args:
             api_key (Optional[str]): The API key to validate. Can be None.
 
@@ -93,9 +97,7 @@ class DatabaseManager:
 
         conn = sqlite3.connect(self.db_path)
         try:
-            row = conn.execute(
-                "SELECT 1 FROM api_keys WHERE key = ?", (api_key,)
-            ).fetchone()
+            rows = conn.execute("SELECT key FROM api_keys").fetchall()
         finally:
             conn.close()
-        return row is not None
+        return any(secrets.compare_digest(api_key, row[0]) for row in rows)

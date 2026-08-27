@@ -201,6 +201,15 @@ class TestGetCurrentWeather:
         assert params["lat"] == 51.51
         assert params["lon"] == -0.13
 
+    def test_geocode_call_uses_https(self, server):
+        self._setup(server)
+        _tool_fn(server, "get_current_weather")(location="London")
+        geocode_url = server._http.get.call_args_list[0][0][0]
+        assert geocode_url.startswith("https://"), (
+            "Geocoding must use HTTPS so the API key is not sent in "
+            "plaintext over the network."
+        )
+
     def test_units_forwarded(self, server):
         self._setup(server)
         _tool_fn(server, "get_current_weather")(location="London", units="imperial")

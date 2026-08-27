@@ -24,6 +24,9 @@ class FakeServer:
         self.mcp = MagicMock()
         self.mcp.http_app.return_value = MagicMock()
 
+    def close(self) -> None:
+        pass
+
 
 class TestServerRegistry:
 
@@ -46,13 +49,14 @@ class TestBuild:
             "SERVER_REGISTRY",
             [("one", FakeServer), ("two", FakeServer)],
         )
-        routes, sub_apps = combined._build()
+        routes, sub_apps, servers = combined._build()
         assert len(routes) == 2
         assert len(sub_apps) == 2
+        assert len(servers) == 2
 
     def test_build_mounts_at_registry_prefix(self, monkeypatch):
         monkeypatch.setattr(combined, "SERVER_REGISTRY", [("foo", FakeServer)])
-        routes, _ = combined._build()
+        routes, _, _ = combined._build()
         assert isinstance(routes[0], Mount)
         assert routes[0].path == "/foo"
 
@@ -75,9 +79,10 @@ class TestBuild:
         )
 
     def test_build_real_registry_produces_seven_routes(self):
-        routes, sub_apps = combined._build()
+        routes, sub_apps, servers = combined._build()
         assert len(routes) == 7
         assert len(sub_apps) == 7
+        assert len(servers) == 7
         assert [r.path for r in routes] == [
             "/greet",
             "/contacts",
@@ -147,8 +152,11 @@ class TestLifespan:
             sub_app.lifespan.return_value.__aexit__.return_value = None
 
         routes = [Mount("/one", app=sub_app_1), Mount("/two", app=sub_app_2)]
+        fake_servers = [FakeServer(), FakeServer()]
         monkeypatch.setattr(
-            combined, "_build", lambda: (routes, [sub_app_1, sub_app_2])
+            combined,
+            "_build",
+            lambda: (routes, [sub_app_1, sub_app_2], fake_servers),
         )
 
         app = combined.build_app()
@@ -159,3 +167,20 @@ class TestLifespan:
             sub_app.lifespan.assert_called_once_with(sub_app)
             sub_app.lifespan.return_value.__aenter__.assert_awaited_once()
             sub_app.lifespan.return_value.__aexit__.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_lifespan_closes_all_servers_on_shutdown(self, monkeypatch):
+        sub_app = MagicMock()
+        sub_app.lifespan.return_value.__aenter__.return_value = None
+        sub_app.lifespan.return_value.__aexit__.return_value = None
+
+        routes = [Mount("/one", app=sub_app)]
+        srv = FakeServer()
+        srv.close = MagicMock()
+        monkeypatch.setattr(combined, "_build", lambda: (routes, [sub_app], [srv]))
+
+        app = combined.build_app()
+        async with app.router.lifespan_context(app):
+            srv.close.assert_not_called()
+
+        srv.close.assert_called_once()

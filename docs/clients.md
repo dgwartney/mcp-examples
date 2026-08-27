@@ -115,7 +115,7 @@ curl -s -X POST http://localhost:8000/mcp \
     "method": "tools/call",
     "params": {
       "name": "search_by_email",
-      "arguments": {"email": "bugs.bunny@acme.com"}
+      "arguments": {"email": "james.whitfield@meridiancorp.com"}
     }
   }'
 ```
@@ -133,7 +133,7 @@ curl -s -X POST http://localhost:8000/mcp \
     "method": "tools/call",
     "params": {
       "name": "search_by_last_name",
-      "arguments": {"last_name": "Bunny"}
+      "arguments": {"last_name": "Webb"}
     }
   }'
 ```
@@ -151,7 +151,7 @@ curl -s -X POST http://localhost:8000/mcp \
     "method": "tools/call",
     "params": {
       "name": "search_by_account_id",
-      "arguments": {"account_id": "ACME-001"}
+      "arguments": {"account_id": "MC-001"}
     }
   }'
 ```
@@ -169,7 +169,7 @@ curl -s -X POST http://localhost:8000/mcp \
     "method": "tools/call",
     "params": {
       "name": "authenticate",
-      "arguments": {"email": "bugs.bunny@acme.com", "password": "password123"}
+      "arguments": {"email": "james.whitfield@meridiancorp.com", "password": "password123"}
     }
   }'
 ```
@@ -303,6 +303,28 @@ curl -s -X POST http://localhost:8000/mcp \
   }'
 ```
 
+**Send a templated SMS (Twilio Content API):**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "send_sms_template",
+      "arguments": {
+        "to": "+15551234567",
+        "content_sid": "HXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+        "content_variables": {"1": "Alice", "2": "Tuesday"}
+      }
+    }
+  }'
+```
+
 **Send a plain-text email:**
 ```bash
 curl -s -X POST http://localhost:8000/mcp \
@@ -344,6 +366,28 @@ curl -s -X POST http://localhost:8000/mcp \
         "subject": "Hello from MCP (HTML)",
         "plain_text": "This is the plain-text fallback.",
         "html": "<h1>Hello!</h1><p>This is an <strong>HTML</strong> email sent via the MCP messaging server.</p>"
+      }
+    }
+  }'
+```
+
+**Send a templated email (SendGrid dynamic template):**
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "send_email_template",
+      "arguments": {
+        "to": "recipient@example.com",
+        "template_id": "d-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+        "dynamic_template_data": {"first_name": "Alice"}
       }
     }
   }'

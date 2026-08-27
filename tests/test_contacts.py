@@ -113,30 +113,30 @@ class TestContactMCPServerIntegration:
 
     def test_search_by_last_name_delegates(self, server):
         """Test that the tool delegates to ContactDatabaseManager."""
-        results = server.contact_db.search_by_last_name("bunny")
+        results = server.contact_db.search_by_last_name("web")
         assert len(results) == 2
 
     def test_search_by_email_delegates(self, server):
         """Test that the tool delegates to ContactDatabaseManager."""
-        results = server.contact_db.search_by_email("daffy.duck@acme.com")
+        results = server.contact_db.search_by_email("daniel.reyes@meridiancorp.com")
         assert len(results) == 1
-        assert results[0]["FirstName"] == "Daffy"
+        assert results[0]["FirstName"] == "Daniel"
 
     def test_search_by_account_id_delegates(self, server):
         """Test that the tool delegates to ContactDatabaseManager."""
-        results = server.contact_db.search_by_account_id("ACME-001")
+        results = server.contact_db.search_by_account_id("MC-001")
         assert len(results) == 4
 
     def test_authenticate_delegates_success(self, server):
         """Test that authenticate delegates correctly for valid credentials."""
-        result = server.contact_db.authenticate("bugs.bunny@acme.com", "password123")
+        result = server.contact_db.authenticate("james.whitfield@meridiancorp.com", "password123")
         assert result is not None
-        assert result["FirstName"] == "Bugs"
+        assert result["FirstName"] == "James"
         assert "Password" not in result
 
     def test_authenticate_delegates_failure(self, server):
         """Test that authenticate returns None for invalid credentials."""
-        result = server.contact_db.authenticate("bugs.bunny@acme.com", "wrong")
+        result = server.contact_db.authenticate("james.whitfield@meridiancorp.com", "wrong")
         assert result is None
 
 
@@ -171,32 +171,45 @@ class TestContactMCPServerToolFunctions:
 
     def test_search_by_last_name_tool_returns_results(self, server):
         """Invoke the search_by_last_name tool closure directly."""
-        results = self._tool(server, "search_by_last_name")(last_name="bunny")
+        results = self._tool(server, "search_by_last_name")(last_name="web")
         assert len(results) == 2
-        assert all(r["LastName"].lower() == "bunny" for r in results)
+        assert all("web" in r["LastName"].lower() for r in results)
 
     def test_search_by_email_tool_returns_result(self, server):
         """Invoke the search_by_email tool closure directly."""
-        results = self._tool(server, "search_by_email")(email="daffy.duck@acme.com")
+        results = self._tool(server, "search_by_email")(email="daniel.reyes@meridiancorp.com")
         assert len(results) == 1
-        assert results[0]["FirstName"] == "Daffy"
+        assert results[0]["FirstName"] == "Daniel"
 
     def test_search_by_account_id_tool_returns_results(self, server):
         """Invoke the search_by_account_id tool closure directly."""
-        results = self._tool(server, "search_by_account_id")(account_id="ACME-001")
+        results = self._tool(server, "search_by_account_id")(account_id="MC-001")
         assert len(results) == 4
 
     def test_authenticate_tool_success(self, server):
         """Invoke the authenticate tool closure with valid credentials."""
         result = self._tool(server, "authenticate")(
-            email="bugs.bunny@acme.com", password="password123"
+            email="james.whitfield@meridiancorp.com", password="password123"
         )
-        assert result["FirstName"] == "Bugs"
+        assert result["FirstName"] == "James"
         assert "Password" not in result
 
     def test_authenticate_tool_failure_raises_tool_error(self, server):
         """Invoke the authenticate tool closure with bad credentials."""
         with pytest.raises(ToolError, match="Authentication failed"):
             self._tool(server, "authenticate")(
-                email="bugs.bunny@acme.com", password="wrongpassword"
+                email="james.whitfield@meridiancorp.com", password="wrongpassword"
             )
+
+    def test_search_by_last_name_empty_raises_tool_error(self, server):
+        """An empty last_name would otherwise wildcard-match every contact."""
+        with pytest.raises(ToolError, match="last_name must not be empty"):
+            self._tool(server, "search_by_last_name")(last_name="")
+
+    def test_search_by_email_empty_raises_tool_error(self, server):
+        with pytest.raises(ToolError, match="email must not be empty"):
+            self._tool(server, "search_by_email")(email="")
+
+    def test_search_by_account_id_empty_raises_tool_error(self, server):
+        with pytest.raises(ToolError, match="account_id must not be empty"):
+            self._tool(server, "search_by_account_id")(account_id="")

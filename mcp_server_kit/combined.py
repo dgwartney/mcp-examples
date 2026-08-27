@@ -51,8 +51,8 @@ SERVER_REGISTRY: list[tuple[str, type]] = [
 ]
 
 
-def _build() -> tuple[list, list]:
-    routes, sub_apps = [], []
+def _build() -> tuple[list, list, list]:
+    routes, sub_apps, servers = [], [], []
     for prefix, ServerClass in SERVER_REGISTRY:
         srv = ServerClass()
         sub_app = srv.mcp.http_app(
@@ -62,7 +62,8 @@ def _build() -> tuple[list, list]:
         )
         routes.append(Mount(f"/{prefix}", app=sub_app))
         sub_apps.append(sub_app)
-    return routes, sub_apps
+        servers.append(srv)
+    return routes, sub_apps, servers
 
 
 def build_app() -> Starlette:
@@ -72,17 +73,21 @@ def build_app() -> Starlette:
     opens/creates their SQLite databases), so this is done lazily rather than
     at import time — see the module-level ``__getattr__`` below.
     """
-    routes, sub_apps = _build()
+    routes, sub_apps, servers = _build()
 
     @asynccontextmanager
     async def _lifespan(parent_app):
         # Starlette's Mount does not propagate sub-app lifespans automatically;
         # compose them here so each server's background workers start and stop
         # correctly.
-        async with AsyncExitStack() as stack:
-            for sub_app in sub_apps:
-                await stack.enter_async_context(sub_app.lifespan(sub_app))
-            yield
+        try:
+            async with AsyncExitStack() as stack:
+                for sub_app in sub_apps:
+                    await stack.enter_async_context(sub_app.lifespan(sub_app))
+                yield
+        finally:
+            for srv in servers:
+                srv.close()
 
     return Starlette(lifespan=_lifespan, routes=routes)
 

@@ -1,18 +1,17 @@
 """
 FastMCP Server with Twilio SMS and SendGrid email tools.
 
-Exposes two tools:
+Exposes four tools:
 - send_sms: Send an SMS message via the Twilio REST API.
+- send_sms_template: Send an SMS from a pre-approved Twilio Content API
+  template via the Twilio REST API.
 - send_email: Send a plain-text or HTML email via the SendGrid v3 API.
+- send_email_template: Send an email from a pre-approved SendGrid dynamic
+  template via the SendGrid v3 API.
 
 Required environment variables:
     TWILIO_ACCOUNT_SID          — Twilio account SID (starts with "AC")
-    TWILIO_AUTH_TOKEN           — Twilio auth token. Mutually exclusive with
-                                  TWILIO_BASIC_AUTH — set exactly one.
-    TWILIO_BASIC_AUTH           — Pre-encoded "Authorization: Basic <value>"
-                                  credential (the base64 string, without the
-                                  "Basic " prefix). Mutually exclusive with
-                                  TWILIO_AUTH_TOKEN — set exactly one.
+    TWILIO_AUTH_TOKEN           — Twilio auth token
     TWILIO_MESSAGING_SERVICE_SID — Twilio Messaging Service SID (starts with "MG")
     SENDGRID_API_KEY            — SendGrid API key (starts with "SG.")
     SENDGRID_FROM_EMAIL         — Verified sender email address
@@ -29,6 +28,7 @@ Example:
         $ uv run -m mcp_server_kit.messaging --transport streamable-http --port 8002
 """
 
+import json
 import os
 from typing import Optional
 
@@ -52,7 +52,6 @@ class MessagingMCPServer(AuthenticatedMCPServer):
     def __init__(self, db_path: Optional[str] = None):
         self._twilio_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
         self._twilio_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
-        self._twilio_basic_auth = os.environ.get("TWILIO_BASIC_AUTH", "").strip()
         self._twilio_messaging_service_sid = os.environ.get("TWILIO_MESSAGING_SERVICE_SID", "")
         self._sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
         self._sendgrid_from_email = os.environ.get("SENDGRID_FROM_EMAIL", "")
@@ -96,28 +95,71 @@ class MessagingMCPServer(AuthenticatedMCPServer):
             if not body:
                 raise ToolError("SMS body must not be empty.")
 
-            url = f"{_TWILIO_BASE}/Accounts/{self._twilio_sid}/Messages.json"
-            data = {
-                "To": to,
-                "MessagingServiceSid": self._twilio_messaging_service_sid,
-                "Body": body,
-            }
-            request_kwargs = {**self._twilio_auth_kwargs(), "data": data}
-            try:
-                resp = self._http.post(url, **request_kwargs)
-                _raise_twilio_error(resp)
-            except ToolError:
-                raise
-            except httpx.RequestError as exc:
-                raise ToolError(f"Twilio request error: {exc}") from exc
+            return self._send_twilio_message({"To": to, "Body": body})
 
-            d = resp.json()
-            return {
-                "sid": d.get("sid"),
-                "status": d.get("status"),
-                "to": d.get("to"),
-                "body": d.get("body"),
-            }
+        @self.mcp.tool(
+            description=(
+                "Send an SMS using a pre-approved Twilio Content API template. "
+                "to: destination phone number in E.164 format (e.g. +15551234567). "
+                "content_sid: Twilio Content template SID (starts with 'HX'). "
+                "content_variables: (optional) dict mapping template variable names "
+                "(as strings) to their substitution values, e.g. "
+                '{"1": "Alice", "2": "Tuesday"}. '
+                "Returns the Twilio message SID and delivery status on success."
+            )
+        )
+        def send_sms_template(
+            to: str,
+            content_sid: str,
+            content_variables: Optional[dict] = None,
+        ) -> dict:
+            """
+            Send a templated SMS via the Twilio Messages REST API using the
+            Content API (ContentSid / ContentVariables) instead of a raw Body.
+
+            Args:
+                to: Destination phone number in E.164 format.
+                content_sid: Twilio Content template SID (starts with "HX").
+                content_variables: Optional dict of template variable substitutions.
+
+            Returns:
+                Dict with keys: sid, status, to, body.
+
+            Raises:
+                ToolError: If credentials are missing, to/content_sid are invalid,
+                           content_variables is not a dict, or the Twilio API
+                           returns an error.
+            """
+            self._check_twilio_creds()
+            if not to.startswith("+"):
+                raise ToolError(
+                    f"Phone number '{to}' must be in E.164 format (e.g. +15551234567)."
+                )
+            if not content_sid:
+                raise ToolError("Content SID must not be empty.")
+            if not content_sid.startswith("HX"):
+                raise ToolError(
+                    f"Content SID '{content_sid}' must be a Twilio Content template SID "
+                    "(starts with 'HX')."
+                )
+            if content_variables is not None and not isinstance(content_variables, dict):
+                raise ToolError(
+                    "content_variables must be a dict of variable name/value pairs."
+                )
+            try:
+                encoded_variables = json.dumps(content_variables or {})
+            except TypeError as exc:
+                raise ToolError(
+                    f"content_variables must be JSON-serializable: {exc}"
+                ) from exc
+
+            return self._send_twilio_message(
+                {
+                    "To": to,
+                    "ContentSid": content_sid,
+                    "ContentVariables": encoded_variables,
+                }
+            )
 
         @self.mcp.tool(
             description=(
@@ -168,12 +210,6 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                            an error.
             """
             self._check_sendgrid_creds()
-            sender_email = from_email or self._sendgrid_from_email
-            if not sender_email:
-                raise ToolError(
-                    "No sender email provided. Pass from_email or set "
-                    "the SENDGRID_FROM_EMAIL environment variable."
-                )
             if not to:
                 raise ToolError("Recipient email address must not be empty.")
             if not subject:
@@ -183,14 +219,8 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                     "At least one of plain_text or html must be provided."
                 )
 
-            sender_name = from_name or self._sendgrid_from_name
-            to_entry: dict = {"email": to}
-            if to_name:
-                to_entry["name"] = to_name
-
-            from_entry: dict = {"email": sender_email}
-            if sender_name:
-                from_entry["name"] = sender_name
+            from_entry = self._sendgrid_from_entry(from_email, from_name)
+            to_entry = self._sendgrid_to_entry(to, to_name)
 
             content = []
             if plain_text:
@@ -205,51 +235,205 @@ class MessagingMCPServer(AuthenticatedMCPServer):
                 "content": content,
             }
 
-            try:
-                resp = self._http.post(
-                    _SENDGRID_SEND_URL,
-                    headers={
-                        "Authorization": f"Bearer {self._sendgrid_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                )
-                _raise_sendgrid_error(resp)
-            except ToolError:
-                raise
-            except httpx.RequestError as exc:
-                raise ToolError(f"SendGrid request error: {exc}") from exc
+            return self._send_sendgrid_email(payload)
 
-            return {
-                "message_id": resp.headers.get("X-Message-Id"),
-                "status_code": resp.status_code,
+        @self.mcp.tool(
+            description=(
+                "Send an email using a pre-approved SendGrid dynamic template. "
+                "to: recipient email address. "
+                "template_id: SendGrid dynamic template ID (starts with 'd-'). "
+                "dynamic_template_data: (optional) dict of template variable "
+                "substitutions, e.g. {\"first_name\": \"Alice\"}. "
+                "to_name: (optional) display name for the recipient. "
+                "from_email: (optional) override the default SENDGRID_FROM_EMAIL. "
+                "from_name: (optional) override the default SENDGRID_FROM_NAME. "
+                "subject: (optional) override the template's default subject. "
+                "Returns the SendGrid message ID on success."
+            )
+        )
+        def send_email_template(
+            to: str,
+            template_id: str,
+            dynamic_template_data: Optional[dict] = None,
+            to_name: Optional[str] = None,
+            from_email: Optional[str] = None,
+            from_name: Optional[str] = None,
+            subject: Optional[str] = None,
+        ) -> dict:
+            """
+            Send an email via the SendGrid v3 Mail Send API using a dynamic
+            template (template_id / dynamic_template_data) instead of inline
+            plain_text/html content.
+
+            Args:
+                to: Recipient email address.
+                template_id: SendGrid dynamic template ID (starts with "d-").
+                dynamic_template_data: Optional dict of template variable
+                    substitutions.
+                to_name: Optional display name for the recipient.
+                from_email: Sender address; falls back to SENDGRID_FROM_EMAIL.
+                from_name: Sender display name; falls back to SENDGRID_FROM_NAME.
+                subject: Optional subject override; templates usually supply
+                    their own subject.
+
+            Returns:
+                Dict with keys: message_id, status_code.
+
+            Raises:
+                ToolError: If credentials are missing, to/template_id are
+                           invalid, dynamic_template_data is not a dict, or
+                           the SendGrid API returns an error.
+            """
+            self._check_sendgrid_creds()
+            if not to:
+                raise ToolError("Recipient email address must not be empty.")
+            if not template_id:
+                raise ToolError("Template ID must not be empty.")
+            if not template_id.startswith("d-"):
+                raise ToolError(
+                    f"Template ID '{template_id}' must be a SendGrid dynamic "
+                    "template ID (starts with 'd-')."
+                )
+            if dynamic_template_data is not None and not isinstance(
+                dynamic_template_data, dict
+            ):
+                raise ToolError(
+                    "dynamic_template_data must be a dict of variable name/value pairs."
+                )
+
+            from_entry = self._sendgrid_from_entry(from_email, from_name)
+            to_entry = self._sendgrid_to_entry(to, to_name)
+
+            personalization: dict = {
+                "to": [to_entry],
+                "dynamic_template_data": dynamic_template_data or {},
             }
+
+            payload = {
+                "personalizations": [personalization],
+                "from": from_entry,
+                "template_id": template_id,
+            }
+            if subject:
+                payload["subject"] = subject
+
+            return self._send_sendgrid_email(payload)
+
+    def close(self) -> None:
+        """Close the underlying ``httpx.Client``."""
+        self._http.close()
+
+    def _send_twilio_message(self, data: dict) -> dict:
+        """
+        POST a message to the Twilio Messages API and normalize the response.
+
+        Args:
+            data: Form fields for the request, excluding MessagingServiceSid
+                (added here) and auth (added via ``_twilio_auth_kwargs``).
+
+        Returns:
+            Dict with keys: sid, status, to, body.
+
+        Raises:
+            ToolError: If the Twilio API returns an error or the request fails.
+        """
+        url = f"{_TWILIO_BASE}/Accounts/{self._twilio_sid}/Messages.json"
+        data = {"MessagingServiceSid": self._twilio_messaging_service_sid, **data}
+        request_kwargs = {**self._twilio_auth_kwargs(), "data": data}
+        try:
+            resp = self._http.post(url, **request_kwargs)
+            _raise_twilio_error(resp)
+            d = resp.json()
+        except ToolError:
+            raise
+        except httpx.RequestError as exc:
+            raise ToolError(f"Twilio request error: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            raise ToolError(f"Twilio returned an invalid response: {exc}") from exc
+
+        return {
+            "sid": d.get("sid"),
+            "status": d.get("status"),
+            "to": d.get("to"),
+            "body": d.get("body"),
+        }
+
+    def _sendgrid_from_entry(
+        self, from_email: Optional[str], from_name: Optional[str]
+    ) -> dict:
+        """Build the SendGrid ``from`` object, validating a sender is configured."""
+        sender_email = from_email or self._sendgrid_from_email
+        if not sender_email:
+            raise ToolError(
+                "No sender email provided. Pass from_email or set "
+                "the SENDGRID_FROM_EMAIL environment variable."
+            )
+        entry: dict = {"email": sender_email}
+        sender_name = from_name or self._sendgrid_from_name
+        if sender_name:
+            entry["name"] = sender_name
+        return entry
+
+    @staticmethod
+    def _sendgrid_to_entry(to: str, to_name: Optional[str]) -> dict:
+        """Build a SendGrid recipient object."""
+        entry: dict = {"email": to}
+        if to_name:
+            entry["name"] = to_name
+        return entry
+
+    def _send_sendgrid_email(self, payload: dict) -> dict:
+        """
+        POST a payload to the SendGrid Mail Send API and normalize the response.
+
+        Returns:
+            Dict with keys: message_id, status_code.
+
+        Raises:
+            ToolError: If the SendGrid API returns an error or the request fails.
+        """
+        try:
+            json.dumps(payload)
+        except TypeError as exc:
+            raise ToolError(f"Email payload is not JSON-serializable: {exc}") from exc
+
+        try:
+            resp = self._http.post(
+                _SENDGRID_SEND_URL,
+                headers={
+                    "Authorization": f"Bearer {self._sendgrid_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            _raise_sendgrid_error(resp)
+        except ToolError:
+            raise
+        except httpx.RequestError as exc:
+            raise ToolError(f"SendGrid request error: {exc}") from exc
+
+        return {
+            "message_id": resp.headers.get("X-Message-Id"),
+            "status_code": resp.status_code,
+        }
 
     def _twilio_auth_kwargs(self) -> dict:
         """
-        Return the httpx request kwargs (``auth`` or ``headers``) for whichever
-        Twilio credential is configured. Call ``_check_twilio_creds`` first to
-        guarantee exactly one is set.
+        Return the httpx ``auth`` kwarg for the configured Twilio credentials.
+        Call ``_check_twilio_creds`` first to guarantee they're set.
         """
-        if self._twilio_basic_auth:
-            return {"headers": {"Authorization": f"Basic {self._twilio_basic_auth}"}}
         return {"auth": (self._twilio_sid, self._twilio_token)}
 
     def _check_twilio_creds(self) -> None:
-        if self._twilio_token and self._twilio_basic_auth:
-            raise ToolError(
-                "Set only one of TWILIO_AUTH_TOKEN or TWILIO_BASIC_AUTH, not both."
-            )
         missing = [
             name
             for name, val in [
                 ("TWILIO_ACCOUNT_SID", self._twilio_sid),
+                ("TWILIO_AUTH_TOKEN", self._twilio_token),
                 ("TWILIO_MESSAGING_SERVICE_SID", self._twilio_messaging_service_sid),
             ]
             if not val
         ]
-        if not self._twilio_token and not self._twilio_basic_auth:
-            missing.append("TWILIO_AUTH_TOKEN or TWILIO_BASIC_AUTH")
         if missing:
             raise ToolError(
                 f"Missing Twilio credentials: {', '.join(missing)}. "

@@ -60,7 +60,7 @@ curl -s -X POST "$BASE_URL" \
     "params": {
       "name": "search_by_email",
       "arguments": {
-        "email": "bugs.bunny@acme.com"
+        "email": "james.whitfield@meridiancorp.com"
       }
     }
   }' | sed -n 's/^data: //p' | jq .
@@ -79,7 +79,7 @@ curl -s -X POST "$BASE_URL" \
     "params": {
       "name": "search_by_last_name",
       "arguments": {
-        "last_name": "Bunny"
+        "last_name": "Webb"
       }
     }
   }' | sed -n 's/^data: //p' | jq .
@@ -117,8 +117,8 @@ curl -s -X POST "$BASE_URL" \
     "params": {
       "name": "authenticate",
       "arguments": {
-        "email": "bugs.bunny@acme.com",
-        "password": "bugs2022!"
+        "email": "james.whitfield@meridiancorp.com",
+        "password": "password123"
       }
     }
   }' | sed -n 's/^data: //p' | jq .

@@ -20,7 +20,7 @@ A minimal demonstration server.
 
 ## Contact Server (`mcp_server_kit/contacts.py`)
 
-A Salesforce-style CRM server backed by a SQLite contacts database, auto-seeded with 20 Warner Bros. cartoon characters.
+A Salesforce-style CRM server backed by a SQLite contacts database, auto-seeded with 20 fictional customer contacts.
 
 - **ContactDatabaseManager** (`contact_database.py`): SQLite-backed storage for mock contact profiles
 - **ContactMCPServer** (`contacts.py`): Subclass of `AuthenticatedMCPServer` exposing contact search and authentication tools
@@ -36,15 +36,15 @@ A Salesforce-style CRM server backed by a SQLite contacts database, auto-seeded 
 
 ### Seed data
 
-`contacts.db` is auto-seeded with 20 Warner Bros. characters across five accounts:
+`contacts.db` is auto-seeded with 20 fictional customer contacts across five accounts:
 
-| Account | Characters |
+| Account | Contacts |
 |---------|-----------|
-| ACME Corporation | Bugs Bunny, Daffy Duck, Porky Pig, Elmer Fudd |
-| WB Studios | Tweety Bird, Sylvester Cat, Lola Bunny, Tasmanian Devil, Granny Webster, Michigan J. Frog |
-| ACME Products | Wile E. Coyote, Road Runner |
-| Toontown Inc | Yosemite Sam, Foghorn Leghorn, Pepe Le Pew, Speedy Gonzales, Penelope Pussycat |
-| Mars Technologies | Marvin Martian, Gossamer Monster, Witch Hazel |
+| Meridian Corporation | James Whitfield, Daniel Reyes, Robert Chen, Frank Douglas |
+| Cascade Media Group | Rachel Adams, Victor Alvarez, Nicole Sanders, Marcus Webb, Eleanor Webster, Gregory Fontaine |
+| Apex Industrial Supply | Gary Mitchell, Ethan Park |
+| Riverside Holdings | Walter Briggs, Harold Jennings, Philippe Moreau, Mateo Fernandez, Camille Dupont |
+| Nova Technologies | Oliver Grant, Bruce Sullivan, Diane Coleman |
 
 Each record includes fields: `Id`, `FirstName`, `LastName`, `Email`, `Phone`, `MobilePhone`, `Title`, `Department`, `AccountId`, `AccountName`, `MailingStreet`, `MailingCity`, `MailingState`, `MailingPostalCode`, `MailingCountry`, and more.
 
@@ -125,7 +125,7 @@ MCP_DB_PATH=/var/data/keys.db uv run -m mcp_server_kit.wikipedia
 
 ## Messaging Server (`mcp_server_kit/messaging.py`)
 
-Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) and email via the [SendGrid v3 Mail Send API](https://docs.sendgrid.com/api-reference/mail-send/mail-send). Supports plain-text and HTML email in a single tool call.
+Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) and email via the [SendGrid v3 Mail Send API](https://docs.sendgrid.com/api-reference/mail-send/mail-send). Supports plain-text and HTML email in a single tool call, plus pre-approved [Twilio Content API templates](https://www.twilio.com/docs/content/send-templates-created-with-the-content-template-builder) for SMS and [SendGrid dynamic templates](https://docs.sendgrid.com/ui/sending-email/how-to-send-an-email-with-dynamic-transactional-templates/) for email.
 
 - **MessagingMCPServer** (`messaging.py`): Subclass of `AuthenticatedMCPServer` with an `httpx.Client` for outbound Twilio and SendGrid requests
 - **API key auth**: Same middleware-based authentication as the other servers
@@ -135,8 +135,7 @@ Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) a
 | Variable | Description |
 |----------|-------------|
 | `TWILIO_ACCOUNT_SID` | Twilio account SID (starts with `AC`) |
-| `TWILIO_AUTH_TOKEN` | Twilio auth token. Mutually exclusive with `TWILIO_BASIC_AUTH` — set exactly one. |
-| `TWILIO_BASIC_AUTH` | Pre-encoded `Authorization: Basic <value>` credential (the base64 string, without the `Basic ` prefix). Mutually exclusive with `TWILIO_AUTH_TOKEN` — set exactly one. |
+| `TWILIO_AUTH_TOKEN` | Twilio auth token |
 | `TWILIO_MESSAGING_SERVICE_SID` | Twilio Messaging Service SID (starts with `MG`) |
 | `SENDGRID_API_KEY` | SendGrid API key (starts with `SG.`) |
 | `SENDGRID_FROM_EMAIL` | Verified sender email address |
@@ -147,7 +146,9 @@ Sends SMS via the [Twilio REST API](https://www.twilio.com/docs/messaging/api) a
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `send_sms` | `to: str, body: str` | Send an SMS via Twilio using the configured Messaging Service. `to` must be E.164 format (e.g. `+15551234567`). Returns the Twilio message `sid` and delivery `status`. |
+| `send_sms_template` | `to: str, content_sid: str, content_variables: dict = None` | Send an SMS using a pre-approved Twilio Content API template. `content_sid` must start with `HX`; `content_variables` maps template variable names to substitution values. Returns the Twilio message `sid`, `status`, and rendered `body`. |
 | `send_email` | `to: str, subject: str, plain_text: str = None, html: str = None, to_name: str = None, from_email: str = None, from_name: str = None` | Send an email via SendGrid. At least one of `plain_text` or `html` must be provided; if both are given the message is sent as multipart/alternative so mail clients can choose the best format. Returns SendGrid `message_id`. |
+| `send_email_template` | `to: str, template_id: str, dynamic_template_data: dict = None, to_name: str = None, from_email: str = None, from_name: str = None, subject: str = None` | Send an email using a pre-approved SendGrid dynamic template. `template_id` must start with `d-`; `dynamic_template_data` maps template variable names to substitution values. `subject` is optional since templates usually supply their own. Returns SendGrid `message_id`. |
 
 ### Running
 

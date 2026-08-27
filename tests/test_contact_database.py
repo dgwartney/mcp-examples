@@ -50,19 +50,19 @@ class TestContactDatabaseManager:
         assert count == 20
 
     def test_search_by_last_name_partial_match(self, db):
-        """Test partial match returns Bugs Bunny and Lola Bunny."""
-        results = db.search_by_last_name("bunny")
+        """Test partial match returns Marcus Webb and Eleanor Webster."""
+        results = db.search_by_last_name("web")
         assert len(results) == 2
         first_names = {r["FirstName"] for r in results}
-        assert first_names == {"Bugs", "Lola"}
+        assert first_names == {"Marcus", "Eleanor"}
 
     def test_search_by_last_name_case_insensitive(self, db):
         """Test that last name search is case-insensitive."""
-        results_lower = db.search_by_last_name("duck")
-        results_upper = db.search_by_last_name("DUCK")
+        results_lower = db.search_by_last_name("chen")
+        results_upper = db.search_by_last_name("CHEN")
         assert len(results_lower) == 1
         assert len(results_upper) == 1
-        assert results_lower[0]["FirstName"] == "Daffy"
+        assert results_lower[0]["FirstName"] == "Robert"
 
     def test_search_by_last_name_no_results(self, db):
         """Test that a non-matching last name returns empty list."""
@@ -71,15 +71,15 @@ class TestContactDatabaseManager:
 
     def test_search_by_email_exact_match(self, db):
         """Test exact email match."""
-        results = db.search_by_email("bugs.bunny@acme.com")
+        results = db.search_by_email("james.whitfield@meridiancorp.com")
         assert len(results) == 1
-        assert results[0]["FirstName"] == "Bugs"
+        assert results[0]["FirstName"] == "James"
 
     def test_search_by_email_case_insensitive(self, db):
         """Test that email search is case-insensitive."""
-        results = db.search_by_email("BUGS.BUNNY@ACME.COM")
+        results = db.search_by_email("JAMES.WHITFIELD@MERIDIANCORP.COM")
         assert len(results) == 1
-        assert results[0]["FirstName"] == "Bugs"
+        assert results[0]["FirstName"] == "James"
 
     def test_search_by_email_no_results(self, db):
         """Test that a non-matching email returns empty list."""
@@ -87,11 +87,11 @@ class TestContactDatabaseManager:
         assert results == []
 
     def test_search_by_account_id_exact_match(self, db):
-        """Test exact account ID match returns 4 ACME contacts."""
-        results = db.search_by_account_id("ACME-001")
+        """Test exact account ID match returns 4 Meridian Corporation contacts."""
+        results = db.search_by_account_id("MC-001")
         assert len(results) == 4
         account_names = {r["AccountName"] for r in results}
-        assert account_names == {"ACME Corporation"}
+        assert account_names == {"Meridian Corporation"}
 
     def test_search_by_account_id_no_results(self, db):
         """Test that a non-matching account ID returns empty list."""
@@ -103,7 +103,7 @@ class TestContactDatabaseManager:
         results = db.search_by_department("Marketing")
         assert len(results) == 3
         last_names = {r["LastName"] for r in results}
-        assert last_names == {"Duck", "Le Pew", "Pussycat"}
+        assert last_names == {"Reyes", "Moreau", "Dupont"}
 
     def test_search_by_department_case_insensitive(self, db):
         """Test that department search is case-insensitive."""
@@ -117,23 +117,23 @@ class TestContactDatabaseManager:
         results = db.search_by_department("Nonexistent")
         assert results == []
 
-    def test_password_field_present_and_nonempty(self, db):
-        """Test that the Password field is present and non-empty in search results."""
-        results = db.search_by_last_name("bunny")
+    def test_password_field_excluded_from_search_results(self, db):
+        """Test that the Password field is never exposed via search results."""
+        results = db.search_by_last_name("web")
+        assert results
         for contact in results:
-            assert "Password" in contact
-            assert contact["Password"]
+            assert "Password" not in contact
 
     def test_authenticate_valid_credentials(self, db):
         """Test successful authentication returns contact without password."""
-        result = db.authenticate("bugs.bunny@acme.com", "password123")
+        result = db.authenticate("james.whitfield@meridiancorp.com", "password123")
         assert result is not None
-        assert result["FirstName"] == "Bugs"
+        assert result["FirstName"] == "James"
         assert "Password" not in result
 
     def test_authenticate_invalid_password(self, db):
         """Test authentication with wrong password returns None."""
-        result = db.authenticate("bugs.bunny@acme.com", "wrongpassword")
+        result = db.authenticate("james.whitfield@meridiancorp.com", "wrongpassword")
         assert result is None
 
     def test_authenticate_unknown_email(self, db):
@@ -143,6 +143,17 @@ class TestContactDatabaseManager:
 
     def test_authenticate_case_insensitive_email(self, db):
         """Test that authenticate is case-insensitive for email."""
-        result = db.authenticate("BUGS.BUNNY@ACME.COM", "password123")
+        result = db.authenticate("JAMES.WHITFIELD@MERIDIANCORP.COM", "password123")
         assert result is not None
-        assert result["FirstName"] == "Bugs"
+        assert result["FirstName"] == "James"
+
+    def test_passwords_stored_hashed_not_plaintext(self, db, temp_db_path):
+        """Test that the stored Password column never contains the plaintext value."""
+        import sqlite3
+        conn = sqlite3.connect(temp_db_path)
+        stored = conn.execute(
+            "SELECT Password FROM contacts WHERE Email = 'james.whitfield@meridiancorp.com'"
+        ).fetchone()[0]
+        conn.close()
+        assert stored != "password123"
+        assert stored.count("$") == 2

@@ -300,7 +300,7 @@ SERVER_REGISTRY = [
 
 
 def _build():
-    routes, sub_apps = [], []
+    routes, sub_apps, servers = [], [], []
     for prefix, ServerClass in SERVER_REGISTRY:
         srv = ServerClass()
         sub_app = srv.mcp.http_app(
@@ -310,18 +310,26 @@ def _build():
         )
         routes.append(Mount(f"/{{prefix}}", app=sub_app))
         sub_apps.append(sub_app)
-    return routes, sub_apps
+        servers.append(srv)
+    return routes, sub_apps, servers
 
 
 def build_app() -> Starlette:
-    routes, sub_apps = _build()
+    routes, sub_apps, servers = _build()
 
     @asynccontextmanager
     async def _lifespan(parent_app):
-        async with AsyncExitStack() as stack:
-            for sub_app in sub_apps:
-                await stack.enter_async_context(sub_app.lifespan(sub_app))
-            yield
+        # Starlette's Mount does not propagate sub-app lifespans automatically;
+        # compose them here so each server's background workers start and stop
+        # correctly.
+        try:
+            async with AsyncExitStack() as stack:
+                for sub_app in sub_apps:
+                    await stack.enter_async_context(sub_app.lifespan(sub_app))
+                yield
+        finally:
+            for srv in servers:
+                srv.close()
 
     return Starlette(lifespan=_lifespan, routes=routes)
 

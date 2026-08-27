@@ -67,6 +67,18 @@ class AuthenticatedMCPServer(ABC):
         """Subclasses must implement this to register their MCP tools."""
         ...
 
+    def close(self) -> None:
+        """
+        Release any resources held by the server (e.g. HTTP clients).
+
+        No-op by default. Subclasses that open an ``httpx.Client`` or other
+        closeable resource in ``__init__`` should override this to close it.
+        ``run()`` calls this automatically on shutdown for a standalone
+        server; callers that own multiple server instances directly (e.g.
+        ``combined.py``, which never calls ``run()``) must call this
+        themselves during shutdown to avoid leaking connection pools.
+        """
+
     def run(self, **kwargs) -> None:
         """
         Run the MCP server.
@@ -84,7 +96,10 @@ class AuthenticatedMCPServer(ABC):
         transport = kwargs.get("transport")
         if transport in ("sse", "streamable-http", "http"):
             kwargs.setdefault("middleware", []).extend(self._http_middleware)
-        self.mcp.run(**kwargs)
+        try:
+            self.mcp.run(**kwargs)
+        finally:
+            self.close()
 
     def main(self) -> None:
         """

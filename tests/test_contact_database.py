@@ -147,6 +147,36 @@ class TestContactDatabaseManager:
         assert result is not None
         assert result["FirstName"] == "James"
 
+    def test_duplicate_email_rejected_by_unique_constraint(self, db, temp_db_path):
+        """Test that inserting a second contact with an existing email fails."""
+        import sqlite3
+
+        conn = sqlite3.connect(temp_db_path)
+        try:
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    "INSERT INTO contacts (Email, FirstName, LastName) "
+                    "VALUES (?, ?, ?)",
+                    ("james.whitfield@meridiancorp.com", "Duplicate", "Whitfield"),
+                )
+        finally:
+            conn.close()
+
+    def test_duplicate_email_rejected_case_insensitive(self, db, temp_db_path):
+        """Test that the email UNIQUE constraint is case-insensitive."""
+        import sqlite3
+
+        conn = sqlite3.connect(temp_db_path)
+        try:
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    "INSERT INTO contacts (Email, FirstName, LastName) "
+                    "VALUES (?, ?, ?)",
+                    ("JAMES.WHITFIELD@MERIDIANCORP.COM", "Duplicate", "Whitfield"),
+                )
+        finally:
+            conn.close()
+
     def test_passwords_stored_hashed_not_plaintext(self, db, temp_db_path):
         """Test that the stored Password column never contains the plaintext value."""
         import sqlite3

@@ -39,6 +39,10 @@ sqlite3 contacts.db "SELECT * FROM contacts WHERE AccountId = 'MC-001';"
 
 ## Add a new contact
 
+> **Email must be unique.** The `Email` column has a `UNIQUE COLLATE NOCASE`
+> constraint, so an `INSERT` reusing an existing email — even with different
+> casing — will fail with `UNIQUE constraint failed: contacts.Email`.
+
 Hash the password first (see the note above), then embed the hash — never the
 plaintext value — in the `INSERT`:
 

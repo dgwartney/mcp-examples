@@ -11,7 +11,10 @@ Author:
 import hashlib
 import secrets
 import sqlite3
+from pathlib import Path
 from typing import Optional
+
+_SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 # Lower than OWASP's production guidance (~600k) to keep this demo database's
 # per-fixture reseeding fast in tests; still far stronger than plaintext.
@@ -37,6 +40,8 @@ def _verify_password(password: str, stored: str) -> bool:
     return secrets.compare_digest(candidate.hex(), digest_hex)
 
 
+# Column order used to build INSERT statements. Must match the columns
+# defined in schema.sql (excluding rowid).
 _CONTACT_COLUMNS = [
     "Id", "FirstName", "LastName", "Salutation", "Name", "Email", "Phone",
     "MobilePhone", "Title", "Department", "AccountId", "AccountName",
@@ -413,17 +418,16 @@ class ContactDatabaseManager:
         """
         Initialize the contacts database and seed data if empty.
 
-        Creates the ``contacts`` table if it does not exist, then calls
-        ``seed_contacts()`` to populate with sample data when the table
-        is empty.
+        Creates the ``contacts`` table from ``schema.sql`` if it does not
+        exist, then calls ``seed_contacts()`` to populate with sample data
+        when the table is empty. ``Email`` is declared ``UNIQUE COLLATE
+        NOCASE`` in the schema so two contacts can never share a login
+        email, matching the case-insensitive lookup used by
+        ``authenticate()`` and the ``search_by_email`` tool.
         """
         conn = sqlite3.connect(self.db_path)
         try:
-            columns_sql = ", ".join(f"{col} TEXT" for col in _CONTACT_COLUMNS)
-            conn.execute(
-                f"CREATE TABLE IF NOT EXISTS contacts "
-                f"(rowid INTEGER PRIMARY KEY AUTOINCREMENT, {columns_sql})"
-            )
+            conn.executescript(_SCHEMA_PATH.read_text())
             conn.commit()
             self.seed_contacts(conn)
         finally:

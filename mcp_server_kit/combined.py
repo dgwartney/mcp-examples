@@ -9,6 +9,10 @@ Endpoints (when running on port 8000):
     /wikipedia/mcp  → Wikipedia server
     /weather/mcp    → Weather server
     /messaging/mcp  → Messaging server (Twilio SMS + SendGrid email)
+    /pto/mcp        → PTO server
+    /onboarding/mcp → Onboarding server
+    /acme/mcp       → Acme Support server (orders, returns, tickets)
+    /acme/api/...   → Acme Support REST API (same data; see acme_api.py)
 
 Run locally:
     OPENWEATHER_API_KEY=<key> uv run -m mcp_server_kit.combined --port 8000
@@ -30,6 +34,8 @@ import uvicorn
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
+from mcp_server_kit.acme import AcmeMCPServer
+from mcp_server_kit.acme_api import build_acme_app
 from mcp_server_kit.contacts import ContactMCPServer
 from mcp_server_kit.onboarding import OnboardingMCPServer
 from mcp_server_kit.pto import PtoMCPServer
@@ -48,6 +54,14 @@ SERVER_REGISTRY: list[tuple[str, type]] = [
     ("messaging", MessagingMCPServer),
     ("pto", PtoMCPServer),
     ("onboarding", OnboardingMCPServer),
+    ("acme", AcmeMCPServer),
+]
+
+# Plain (non-MCP) REST apps: (mount_path, zero-arg app factory). Mounted
+# BEFORE the MCP servers so a more specific path like "/acme/api" wins over
+# the "/acme" MCP mount (Starlette uses the first matching Mount).
+REST_REGISTRY: list[tuple[str, object]] = [
+    ("/acme/api", build_acme_app),
 ]
 
 
@@ -74,6 +88,8 @@ def build_app() -> Starlette:
     at import time — see the module-level ``__getattr__`` below.
     """
     routes, sub_apps, servers = _build()
+    rest_routes = [Mount(path, app=factory()) for path, factory in REST_REGISTRY]
+    routes = rest_routes + routes
 
     @asynccontextmanager
     async def _lifespan(parent_app):

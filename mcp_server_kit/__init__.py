@@ -23,6 +23,7 @@ __all__ = [
     "WeatherMCPServer",
     "WikipediaMCPServer",
     "PtoMCPServer",
+    "AcmeMCPServer",
     "OnboardingMCPServer",
 ]
 
@@ -39,6 +40,7 @@ _LAZY_IMPORTS: dict[str, str] = {
     "WeatherMCPServer": "mcp_server_kit.weather",
     "WikipediaMCPServer": "mcp_server_kit.wikipedia",
     "PtoMCPServer": "mcp_server_kit.pto",
+    "AcmeMCPServer": "mcp_server_kit.acme",
     "OnboardingMCPServer": "mcp_server_kit.onboarding",
 }
 

@@ -30,14 +30,14 @@ class FakeServer:
 
 class TestServerRegistry:
 
-    def test_registry_has_seven_entries(self):
-        assert len(combined.SERVER_REGISTRY) == 7
+    def test_registry_has_eight_entries(self):
+        assert len(combined.SERVER_REGISTRY) == 8
 
     def test_registry_prefixes(self):
         prefixes = [prefix for prefix, _ in combined.SERVER_REGISTRY]
         assert prefixes == [
             "greet", "contacts", "wikipedia", "weather", "messaging",
-            "pto", "onboarding",
+            "pto", "onboarding", "acme",
         ]
 
 
@@ -78,11 +78,11 @@ class TestBuild:
             transport="streamable-http",
         )
 
-    def test_build_real_registry_produces_seven_routes(self):
+    def test_build_real_registry_produces_eight_routes(self):
         routes, sub_apps, servers = combined._build()
-        assert len(routes) == 7
-        assert len(sub_apps) == 7
-        assert len(servers) == 7
+        assert len(routes) == 8
+        assert len(sub_apps) == 8
+        assert len(servers) == 8
         assert [r.path for r in routes] == [
             "/greet",
             "/contacts",
@@ -91,6 +91,7 @@ class TestBuild:
             "/messaging",
             "/pto",
             "/onboarding",
+            "/acme",
         ]
 
 
@@ -102,6 +103,8 @@ class TestApp:
     def test_app_has_route_for_each_registered_server(self):
         mounted_paths = {r.path for r in combined.app.routes}
         assert mounted_paths == {
+            "/acme/api",
+            "/acme",
             "/greet",
             "/contacts",
             "/wikipedia",
@@ -110,6 +113,10 @@ class TestApp:
             "/pto",
             "/onboarding",
         }
+
+    def test_rest_mounts_come_before_mcp_mounts(self):
+        paths = [r.path for r in combined.app.routes]
+        assert paths.index("/acme/api") < paths.index("/acme")
 
     def test_unmounted_path_returns_404(self):
         with TestClient(combined.app) as client:

@@ -235,9 +235,68 @@ MCP_DB_PATH=/var/data/keys.db ONBOARDING_DB_PATH=/var/data/onboarding.db uv run 
 
 ---
 
+## Acme Support Server (`mcp_server_kit/acme.py` + `mcp_server_kit/acme_api.py`)
+
+A mock retail customer-service backend (orders, returns, support tickets) built for the Artemis learning-guide labs. The same SQLite data is exposed **two ways** so labs can compare an HTTP tool with an MCP tool that reach the same backend:
+
+- **AcmeDatabaseManager** (`acme_database.py`): SQLite storage. Six seeded orders cover every lifecycle state; returns and tickets start empty and are created at runtime.
+- **AcmeMCPServer** (`acme.py`): Subclass of `AuthenticatedMCPServer`, mounted at `/acme/mcp`.
+- **REST API** (`acme_api.py`): A plain Starlette app, mounted at `/acme/api`. Every route except `GET /acme/api/health` requires the shared `X-API-Key`.
+
+### MCP tools
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `get_order` | `order_id: str` | Order status and details, including `return_eligible` / `return_deadline`. `ToolError` if not found. |
+| `list_orders` | `email: str` | All orders for a customer email, newest first. |
+| `create_return` | `order_id: str, reason: str` | Open a return (`RET-<n>`) for a delivered order inside its 30-day window. `ToolError` otherwise. |
+| `get_return` | `return_id: str` | Look up a return. |
+| `create_ticket` | `customer_email: str, subject: str, description: str, priority: str = "normal"` | Open a support ticket (`TKT-<n>`). Priority is `low`, `normal`, `high` or `urgent`. |
+| `get_ticket` | `ticket_id: str` | Look up a ticket. |
+
+### REST routes (under `/acme/api`)
+
+| Method & path | Success | Errors |
+|---|---|---|
+| `GET /health` (no key) | `200 {"status":"ok","service":"acme"}` | — |
+| `GET /orders/{order_id}` | `200` order | `404 order_not_found` |
+| `GET /orders?email=` | `200 {"customer_email","count","orders"}` | `400 missing_email` |
+| `POST /returns` `{"order_id","reason"}` | `201` return | `400`, `404 order_not_found`, `409 not_eligible` |
+| `GET /returns/{return_id}` | `200` return | `404` |
+| `POST /tickets` `{"customer_email","subject","description","priority"?}` | `201` ticket | `400` |
+| `GET /tickets/{ticket_id}` | `200` ticket | `404` |
+
+Errors use the shape `{"error": "<code>", "message": "<text>"}`.
+
+**Reliability-lab simulations** (REST `GET /orders/{id}` only): `ACM-1099` responds after ~8 s, which exceeds a short tool timeout. `ACM-1098` always returns `503`. `ACM-1097` returns `503` twice and then succeeds; the counter resets 60 s after the first failure.
+
+### Seed data
+
+| Order | Customer | Status | Notes |
+|---|---|---|---|
+| ACM-1001 | maria.lopez@example.com | processing | not yet shipped |
+| ACM-1002 | maria.lopez@example.com | shipped | UPS tracking |
+| ACM-1003 | james.chen@example.com | out_for_delivery | 2 items |
+| ACM-1004 | james.chen@example.com | delivered 2026-09-25 | returnable until 2026-10-25 |
+| ACM-1005 | aisha.patel@example.com | delivered 2026-08-02 | return window closed |
+| ACM-1006 | aisha.patel@example.com | cancelled | — |
+
+### Running
+
+```bash
+# stdio transport (MCP only)
+uv run -m mcp_server_kit.acme
+
+# Both REST and MCP, via the combined server
+uv run -m mcp_server_kit.combined --port 8000
+curl http://localhost:8000/acme/api/health
+```
+
+---
+
 ## Combined Server (`mcp_server_kit/combined.py`) {#combined-server}
 
-Mounts all seven servers into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
+Mounts all eight MCP servers (plus the Acme REST API) into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
 
 ### URL paths
 
@@ -250,6 +309,8 @@ Mounts all seven servers into a single process, each at its own URL path. This i
 | `/messaging/mcp` | Messaging server (Twilio SMS + SendGrid email) |
 | `/pto/mcp` | PTO server |
 | `/onboarding/mcp` | Onboarding server |
+| `/acme/mcp` | Acme Support server |
+| `/acme/api/...` | Acme Support REST API (plain HTTP, mounted first via `REST_REGISTRY`) |
 
 ### How it works
 

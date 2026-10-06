@@ -8,6 +8,7 @@ primary_region = 'ord'
   CONTACTS_DB_PATH = '/data/contacts.db'
   PTO_DB_PATH = '/data/pto.db'
   ONBOARDING_DB_PATH = '/data/onboarding.db'
+  ACME_DB_PATH = '/data/acme.db'
   # Set API credentials via fly secrets — never put keys in fly.toml
   # Weather:  fly secrets set OPENWEATHER_API_KEY=<key>  (https://openweathermap.org/api)
   # Twilio:   fly secrets set TWILIO_ACCOUNT_SID=<sid>

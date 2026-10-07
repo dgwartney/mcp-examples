@@ -59,6 +59,12 @@ _RECAP = _rx(
 _CLOSE = _rx(
     r"\bthat'?s all\b", r"\bthat'?s it\b", r"\bthanks\b", r"\bthank you\b", r"\bbye\b",
     r"\bgoodbye\b", r"\bnothing else\b", r"\bgracias\b", r"\badios\b", r"\bhasta luego\b")
+# A question after "thanks" is a follow-up, not a goodbye. Voice transcripts often
+# drop the "?", so interrogative words count too.
+_QUESTION = _rx(
+    r"[?¿]", r"\b(?:what|when|where|why|how|which|who)\b",
+    r"\b(?:does|do|is|are|can|could|will|would) (?:that|it|this|i|you|my)\b",
+    r"\b(?:cuando|cuanto|cuantos|cuantas|como|donde|por que|incluye)\b")
 
 # Other languages: (pattern on folded text, display name)
 _LANGUAGES = [
@@ -198,7 +204,7 @@ def detect_intents(text: str) -> list[str]:
     intents = [name for _, name in found]
     if not intents and _PAY_WEAK.search(t):
         intents = ["pay"]
-    if not intents and _CLOSE.search(t):
+    if not intents and _CLOSE.search(t) and not _QUESTION.search(t):
         intents = ["close"]
     return intents
 

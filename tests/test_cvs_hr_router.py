@@ -175,6 +175,27 @@ class TestIntentRules:
     def test_close(self, text):
         assert interp(text)["intent"] == "close"
 
+    @pytest.mark.parametrize("text", [
+        "Gracias por la información. ¿Eso incluye los días que pedí recientemente?",
+        "Gracias, ¿y eso cuándo se aplica?",
+        "Thanks, does that include the days I already requested?",
+        "thank you, and when does that start",           # voice transcript, no "?"
+        "gracias, y cuando empieza eso",
+        "Thanks. Is that before tax?"])
+    def test_thanks_plus_question_is_not_close(self, text):
+        assert interp(text)["intent"] == "other"
+
+    @pytest.mark.parametrize("text", [
+        "Gracias por la información. ¡Eso es todo por ahora!",
+        "Okay, great. Thanks very much.", "thanks, bye", "gracias, adiós",
+        "thank you, that's all I needed"])
+    def test_thanks_without_question_is_close(self, text):
+        assert interp(text)["intent"] == "close"
+
+    def test_thanks_plus_duration_is_pto_target(self):
+        out = interp("Gracias. ¿Y para tomar dos semanas?", expecting="next")
+        assert (out["intent"], out["target_hours"]) == ("pto", "80")
+
     def test_two_intents_in_order_spoken(self):
         out = interp("My pay's short, and what's my PTO?")
         assert (out["intent"], out["pending_intent"]) == ("pay", "pto")

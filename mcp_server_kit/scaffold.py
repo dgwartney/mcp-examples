@@ -111,6 +111,25 @@ def _render_repo_test(template: str, name: str, name_snake: str) -> str:
     return rendered
 
 
+def _closing_index(lines: list[str], name: str, closer: str) -> int:
+    """
+    Index of the line closing the ``name = [...]`` / ``{...}`` literal: the
+    first line equal to ``closer`` after the line that assigns ``name``.
+    (A fixed look-back window broke once a registry grew past it.)
+    """
+    start = next(
+        (i for i, line in enumerate(lines)
+         if line.lstrip().startswith(name) and "=" in line),
+        None,
+    )
+    if start is None:
+        raise RuntimeError(f"Could not find {name} in the file being updated")
+    for i in range(start + 1, len(lines)):
+        if lines[i].strip() == closer:
+            return i
+    raise RuntimeError(f"Could not find the closing {closer!r} of {name}")
+
+
 def _update_combined_py(repo_root: Path, name: str, name_snake: str) -> None:
     """Add an import line and a SERVER_REGISTRY entry to combined.py."""
     combined_path = repo_root / "mcp_server_kit" / "combined.py"
@@ -132,12 +151,7 @@ def _update_combined_py(repo_root: Path, name: str, name_snake: str) -> None:
     lines.insert(insert_at, import_line)
 
     registry_entry = f'    ("{name_snake}", {name}MCPServer),\n'
-    closing_bracket_idx = next(
-        i
-        for i, line in enumerate(lines)
-        if line.strip() == "]"
-        and any("SERVER_REGISTRY" in lines[j] for j in range(max(0, i - 10), i))
-    )
+    closing_bracket_idx = _closing_index(lines, "SERVER_REGISTRY", "]")
     lines.insert(closing_bracket_idx, registry_entry)
 
     combined_path.write_text("".join(lines))
@@ -150,20 +164,10 @@ def _update_init_py(repo_root: Path, name: str, name_snake: str) -> None:
     lines = init_path.read_text().splitlines(keepends=True)
     class_name = f"{name}MCPServer"
 
-    all_closing_idx = next(
-        i
-        for i, line in enumerate(lines)
-        if line.strip() == "]"
-        and any("__all__" in lines[j] for j in range(max(0, i - 20), i))
-    )
+    all_closing_idx = _closing_index(lines, "__all__", "]")
     lines.insert(all_closing_idx, f'    "{class_name}",\n')
 
-    lazy_closing_idx = next(
-        i
-        for i, line in enumerate(lines)
-        if line.strip() == "}"
-        and any("_LAZY_IMPORTS" in lines[j] for j in range(max(0, i - 20), i))
-    )
+    lazy_closing_idx = _closing_index(lines, "_LAZY_IMPORTS", "}")
     lines.insert(lazy_closing_idx, f'    "{class_name}": "mcp_server_kit.{name_snake}",\n')
 
     init_path.write_text("".join(lines))

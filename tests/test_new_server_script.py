@@ -68,6 +68,18 @@ class TestNewServerScript:
         assert "from mcp_server_kit.inventory import InventoryMCPServer" in content
         assert '("inventory", InventoryMCPServer)' in content
 
+    def test_repeated_adds_keep_updating_registries(self, scaffold_env):
+        # Regression: a fixed look-back window crashed (StopIteration) once
+        # SERVER_REGISTRY grew past it.
+        for name in ("Alpha", "Bravo", "Charlie", "Delta"):
+            result = _run_scaffold(scaffold_env, name)
+            assert result.returncode == 0, result.stderr
+        combined_py = (scaffold_env / "mcp_server_kit" / "combined.py").read_text()
+        init_py = (scaffold_env / "mcp_server_kit" / "__init__.py").read_text()
+        for snake, cls in (("alpha", "Alpha"), ("delta", "Delta")):
+            assert f'("{snake}", {cls}MCPServer)' in combined_py
+            assert f'"{cls}MCPServer": "mcp_server_kit.{snake}",' in init_py
+
     def test_init_py_registry_updated(self, scaffold_env):
         _run_scaffold(scaffold_env, "Inventory")
         content = (scaffold_env / "mcp_server_kit" / "__init__.py").read_text()

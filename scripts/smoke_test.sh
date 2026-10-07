@@ -144,6 +144,8 @@ if [ "$REMOTE" != "1" ]; then
   export CONTACTS_DB_PATH="$WORKDIR/contacts.db"
   export PTO_DB_PATH="$WORKDIR/pto.db"
   export ONBOARDING_DB_PATH="$WORKDIR/onboarding.db"
+  export ACME_DB_PATH="$WORKDIR/acme.db"
+  export CVS_HR_DB_PATH="$WORKDIR/cvs_hr.db"
   LOGFILE="$WORKDIR/server.log"
 fi
 
@@ -591,8 +593,9 @@ combined_url() {
 
 section "9. Combined server"
 if ensure_server greet mcp_server_kit.combined --port "$PORT"; then
-  step "9.1" "Every prefix is mounted and auth-guarded" "All seven return 401, unknown path returns 404"
-  for prefix in greet contacts wikipedia weather messaging pto onboarding; do
+  step "9.1" "Every prefix is mounted and auth-guarded" "All twelve return 401, unknown path returns 404"
+  for prefix in greet contacts wikipedia weather messaging pto onboarding acme \
+      cvs_identity workday_hcm time_attendance servicenow_hrsd; do
     code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$(combined_url "$prefix")" \
       -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
       -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
@@ -613,6 +616,61 @@ if ensure_server greet mcp_server_kit.combined --port "$PORT"; then
     call_tool "$(combined_url greet)" greet '{"name": "Ada"}'
 else
   skip_check "9" "Combined server" "server not reachable"
+fi
+
+# ---------------------------------------------------------------------------
+# 10. CVS HR systems of record (Savvy demo) — via the combined server
+# ---------------------------------------------------------------------------
+
+# rest_base — base URL of the combined server (local or remote).
+rest_base() {
+  if [ "$REMOTE" = "1" ]; then echo "$BASE_URL"; else echo "http://localhost:$PORT"; fi
+}
+
+# cvs_golden_chain — verify Daniel, then read his worker and timecard records
+# with the verification_id, printing the fields the agent speaks. Read-only
+# apart from one verification row and audit rows; sends no SMS.
+cvs_golden_chain() {
+  API_KEY="$API_KEY" BASE="$(rest_base)" uv run python - <<'PY'
+import asyncio, json, os
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+
+async def call(prefix, tool, args):
+    t = StreamableHttpTransport(f"{os.environ['BASE']}/{prefix}/mcp",
+                                headers={"X-API-Key": os.environ["API_KEY"]})
+    async with Client(t) as c:
+        r = await c.call_tool(tool, args)
+        return json.loads(r.content[0].text)
+
+async def main():
+    v = await call("cvs_identity", "verify_colleague", {"colleague_id": "7742318"})
+    vid = v["verification_id"]
+    w = await call("workday_hcm", "get_worker", {"worker_id": "7742318", "verification_id": vid})
+    tc = await call("time_attendance", "get_timecard", {"worker_id": "7742318", "verification_id": vid})
+    print("verified:", v["verified"], "| sms_suppressed:", v.get("sms_suppressed"))
+    print("worker:", w["display_name"], "|", w["job_title"], "| store", w["location"]["store"])
+    print("timecard:", tc["period_end"], "| hours_short", tc["hours_short"], "| amount_usd", tc["amount_usd"])
+    locked = await call("time_attendance", "get_timecard", {"worker_id": "7742318"})
+    print("without verification_id:", locked.get("error"))
+
+asyncio.run(main())
+PY
+}
+
+section "10. CVS HR systems (Savvy)"
+if ensure_server greet mcp_server_kit.combined --port "$PORT"; then
+  run_check "10.1" "CVS HR admin health (no key)" '200 with "service":"cvs_hr" and the as_of date' \
+    curl -s -w " -> %{http_code}" "$(rest_base)/cvs_hr/api/health"
+
+  run_check "10.2" "CVS HR admin settings without a key" "401" \
+    curl -s -o /dev/null -w "%{http_code}" "$(rest_base)/cvs_hr/api/settings"
+
+  run_check "10.3" "verify -> get_worker -> get_timecard" \
+    "verified True; Daniel R. | Pharmacy Technician | store 6218; hours_short 1.5 | amount_usd 41.63; without verification_id: not_verified" \
+    cvs_golden_chain
+else
+  skip_check "10" "CVS HR systems" "combined server not reachable"
 fi
 
 # ---------------------------------------------------------------------------

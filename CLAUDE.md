@@ -43,6 +43,8 @@ The project is organized as a `mcp_server_kit` Python package:
 - **mcp_server_kit/weather.py** — `WeatherMCPServer` derived class wrapping the OpenWeatherMap API (current weather, forecast, air quality).
 - **mcp_server_kit/wikipedia.py** — `WikipediaMCPServer` derived class wrapping the Wikipedia API (search, summaries, related pages).
 - **mcp_server_kit/messaging.py** — `MessagingMCPServer` derived class exposing SMS (Twilio, including Content API templates) and email (SendGrid, including dynamic templates) tools.
+- **mcp_server_kit/cvs_hr_rules.py / cvs_hr_database.py / cvs_hr_api.py** — CVS HR demo backend: pure rules (pay calendar, OT pricing, PTO projection, en/es display strings), one shared SQLite store with per-`verification_id` sandboxes and `audit_events`, and the `/cvs_hr/api` admin REST.
+- **mcp_server_kit/cvs_identity.py, workday_hcm.py, time_attendance.py, servicenow_hrsd.py** — thin `AuthenticatedMCPServer` adapters over that store, one per system of record.
 - **mcp_server_kit/combined.py** — Mounts all servers above into a single Starlette app, each at its own URL path (`/greet/mcp`, `/contacts/mcp`, `/wikipedia/mcp`, `/weather/mcp`, `/messaging/mcp`). Entry point used for deployment.
 - **mcp_server_kit/client.py** — `MCPClient` class that connects to a remote MCP endpoint and calls tools.
 - **mcp_server_kit/cli.py** — `MCPClientApp` CLI application and `main()` entry point.
@@ -112,15 +114,3 @@ a first-time contributor, not architecture changes.
   once they exist. Add a key tier/scope (e.g. an `is_admin` column or a distinct admin
   key table) and gate the new CRUD tools/endpoints on it, separate from the read-only
   key used for `search_by_*` and similar tools.
-- **Fix `test_weather.py` isolation from `OPENWEATHER_API_KEY`** — the
-  `server_no_key` fixture (`tests/test_weather.py`) passes `api_key=""` to
-  `WeatherMCPServer`, but `WeatherMCPServer.__init__`
-  (`mcp_server_kit/weather.py`) does
-  `self._api_key = api_key or os.environ.get("OPENWEATHER_API_KEY", "")`, so
-  an empty string falls through to a real `OPENWEATHER_API_KEY` if one is set
-  in the shell running the tests. This makes
-  `TestGetCurrentWeather`/`TestGetForecast`/`TestGetAirQuality
-  ::test_missing_api_key_raises_tool_error` fail or pass depending on the
-  developer's local environment rather than the test's own setup. Fix by
-  adding `monkeypatch.delenv("OPENWEATHER_API_KEY", raising=False)` to the
-  `server_no_key` (and/or `server`) fixture.

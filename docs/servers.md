@@ -294,9 +294,50 @@ curl http://localhost:8000/acme/api/health
 
 ---
 
+## CVS HR Systems of Record (Savvy demo)
+
+Four mock MCP servers that mirror the systems a CVS Health Colleague Service voice agent ("Savvy") touches, sharing one SQLite file (`CVS_HR_DB_PATH`), plus an admin REST API. Business rules live in `cvs_hr_rules.py` (pure, no I/O); schema, seed, sandboxes and audit in `cvs_hr_database.py`; each server is a thin adapter.
+
+| Prefix | Module | Tools |
+|---|---|---|
+| `/cvs_identity/mcp` | `cvs_identity.py` | `verify_colleague(colleague_id="", mobile="", attempt=1)`, `revoke_verification(verification_id)` |
+| `/workday_hcm/mcp` | `workday_hcm.py` | `get_worker(worker_id, verification_id)`, `get_time_off_balance(worker_id, verification_id)`, `project_time_off(worker_id, target_hours, verification_id)`, `evaluate_pay_correction(worker_id, hours, verification_id)` (read-only; never writes payroll) |
+| `/time_attendance/mcp` | `time_attendance.py` | `get_timecard(worker_id, period_end="", verification_id)`, `submit_timecard_correction(worker_id, period_end, dates, remove_auto_deduct="meal", audit_note, consent, exclude_dates, verification_id)`, `cancel_timecard_correction(verification_id, correction_id)` |
+| `/servicenow_hrsd/mcp` | `servicenow_hrsd.py` | `create_hr_case(subject_person, hr_service, contact_type, short_description, description, related_records, state, resolved_by, assignment_group, verification_id)`, `add_work_note(number, note, verification_id)`, `get_hr_cases(subject_person, state, verification_id)` |
+
+**Rules the servers enforce:**
+
+- `verify_colleague` strips non-digits (7 digits = colleague ID, 10 = mobile) and issues a `verification_id`. It is stateless across attempts: a failure with `attempt >= 2` returns `escalate=true`.
+- Every other tool returns `{"error": "not_verified"}` unless the `verification_id` is active and covers the worker. The one exception is `create_hr_case(hr_service="Identity verification")` with no `subject_person`, whose text is stored with digits masked.
+- **Per-call sandbox:** corrections and cases are keyed by `verification_id`, and reads overlay them on the seed, so concurrent calls never see each other's writes.
+- `submit_timecard_correction` requires `consent=true`.
+- Every call writes one `audit_events` row tagged with its system.
+- **Dates** are relative to the as-of date: today by default, or `CVS_HR_AS_OF`.
+  - The last closed week ends on the most recent Saturday on or before it.
+  - Payday is period end + 13 days, then every 14 days.
+  - Every date and amount has `*_display_en` / `*_display_es` strings.
+- After a reset, case numbers start at `HR-<year>-0917`.
+- `sms_to` comes from `CVS_HR_DEMO_SMS_TO` only while the SMS switch is on (default **off**); otherwise `sms_to=""` and `sms_suppressed=true`.
+
+**Admin REST** (`/cvs_hr/api`, all but `/health` need `X-API-Key`): `GET /health`, `POST /reset`, `GET /audit_events?system=&verification_id=&limit=`, `GET /systems?verification_id=` (what changed; latest sandbox if omitted), `GET|POST /settings` `{"sms_enabled": bool}`.
+
+**Seed colleagues:**
+
+| Colleague | ID | Notes |
+|---|---|---|
+| Daniel Reyes | 7742318 | Mobile 6025550148. Meal breaks wrongly deducted Mon/Wed/Thu: 1.5 h short, priced at $41.63 OT. PTO 62.5 h, accruing 6.15 h. |
+| Ana Ortiz | 5530912 | Prefers Spanish; PTO 40 h |
+| Marcus Lee | 8104467 | 5.0 h of missed breaks, so the correction is paid off-cycle |
+| Kevin Park | 3329018 | Used for the failed-verification path |
+| Jordan Hayes | 9017734 | Parental-leave caller |
+| Priya Shah | 6610425 | PTO 88.5 h, already above 80 |
+| Elena Ruiz | 7742381 | Daniel's ID with two digits transposed (wrong-person recovery) |
+
+---
+
 ## Combined Server (`mcp_server_kit/combined.py`) {#combined-server}
 
-Mounts all eight MCP servers (plus the Acme REST API) into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
+Mounts all twelve MCP servers (plus the Acme and CVS HR REST APIs) into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
 
 ### URL paths
 

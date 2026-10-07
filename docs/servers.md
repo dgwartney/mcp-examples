@@ -303,6 +303,7 @@ Four mock MCP servers that mirror the systems a CVS Health Colleague Service voi
 | `/cvs_identity/mcp` | `cvs_identity.py` | `verify_colleague(colleague_id="", mobile="", attempt=1)`, `revoke_verification(verification_id)` |
 | `/workday_hcm/mcp` | `workday_hcm.py` | `get_worker(worker_id, verification_id)`, `get_time_off_balance(worker_id, verification_id)`, `project_time_off(worker_id, target_hours, verification_id)`, `evaluate_pay_correction(worker_id, hours, verification_id)` (read-only; never writes payroll) |
 | `/time_attendance/mcp` | `time_attendance.py` | `get_timecard(worker_id, period_end="", verification_id)`, `submit_timecard_correction(worker_id, period_end, dates, remove_auto_deduct="meal", audit_note, consent, exclude_dates, verification_id)`, `cancel_timecard_correction(verification_id, correction_id)` |
+| `/cvs_hr_router/mcp` | `cvs_hr_router.py` | `interpret_reply(text, expecting="")`: deterministic keyword rules (English and Spanish, in `cvs_hr_router_rules.py`) that return `intent`, `pending_intent`, `intents`, `consent`, `target_hours`, `recap_language`, `wants_spanish`, `language_name`, `wants_human`, `expecting`. Needs no verification; writes only an audit row |
 | `/servicenow_hrsd/mcp` | `servicenow_hrsd.py` | `create_hr_case(subject_person, hr_service, contact_type, short_description, description, related_records, state, resolved_by, assignment_group, verification_id)`, `add_work_note(number, note, verification_id)`, `get_hr_cases(subject_person, state, verification_id)` |
 
 **Rules the servers enforce:**
@@ -337,7 +338,7 @@ Four mock MCP servers that mirror the systems a CVS Health Colleague Service voi
 
 ## Combined Server (`mcp_server_kit/combined.py`) {#combined-server}
 
-Mounts all twelve MCP servers (plus the Acme and CVS HR REST APIs) into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
+Mounts all thirteen MCP servers (plus the Acme and CVS HR REST APIs) into a single process, each at its own URL path. This is the entry point used by the Fly.io deployment — one `fly deploy` starts everything.
 
 ### URL paths
 

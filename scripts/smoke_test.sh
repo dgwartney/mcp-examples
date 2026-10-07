@@ -593,9 +593,9 @@ combined_url() {
 
 section "9. Combined server"
 if ensure_server greet mcp_server_kit.combined --port "$PORT"; then
-  step "9.1" "Every prefix is mounted and auth-guarded" "All twelve return 401, unknown path returns 404"
+  step "9.1" "Every prefix is mounted and auth-guarded" "All thirteen return 401, unknown path returns 404"
   for prefix in greet contacts wikipedia weather messaging pto onboarding acme \
-      cvs_identity workday_hcm time_attendance servicenow_hrsd; do
+      cvs_identity workday_hcm time_attendance servicenow_hrsd cvs_hr_router; do
     code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$(combined_url "$prefix")" \
       -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
       -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
@@ -669,6 +669,10 @@ if ensure_server greet mcp_server_kit.combined --port "$PORT"; then
   run_check "10.3" "verify -> get_worker -> get_timecard" \
     "verified True; Daniel R. | Pharmacy Technician | store 6218; hours_short 1.5 | amount_usd 41.63; without verification_id: not_verified" \
     cvs_golden_chain
+
+  run_check "10.4" "cvs_hr_router interpret_reply (golden line 12)" '"intent":"leave"' \
+    call_tool "$(combined_url cvs_hr_router)" interpret_reply \
+      '{"text": "As the father, do I get paid time off?", "expecting": "next"}'
 else
   skip_check "10" "CVS HR systems" "combined server not reachable"
 fi

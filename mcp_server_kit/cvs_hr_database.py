@@ -47,7 +47,7 @@ from mcp_server_kit import cvs_hr_rules as rules
 SMS_TO_ENV = "CVS_HR_DEMO_SMS_TO"
 FIRST_CASE_SEQ = 917
 MAX_VERIFY_ATTEMPTS = 2
-SYSTEMS = ("cvs_identity", "workday_hcm", "time_attendance", "servicenow_hrsd")
+SYSTEMS = ("cvs_identity", "workday_hcm", "time_attendance", "servicenow_hrsd", "cvs_hr_router")
 CASE_STATES = {
     "new", "ready", "work_in_progress", "awaiting_info", "resolved",
     "closed_complete", "closed_incomplete", "cancelled",

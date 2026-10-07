@@ -17,6 +17,7 @@ Endpoints (when running on port 8000):
     /workday_hcm/mcp     → Workday HCM mock (worker, PTO, read-only payroll rule)
     /time_attendance/mcp → Time and attendance mock (timecards, corrections)
     /servicenow_hrsd/mcp → ServiceNow HRSD mock (HR cases)
+    /cvs_hr_router/mcp   → Deterministic caller-reply interpreter (interpret_reply)
     /cvs_hr/api/...      → CVS HR admin REST (reset, audit_events, systems, settings)
 
 Run locally:
@@ -43,6 +44,7 @@ from mcp_server_kit.acme import AcmeMCPServer
 from mcp_server_kit.acme_api import build_acme_app
 from mcp_server_kit.contacts import ContactMCPServer
 from mcp_server_kit.cvs_hr_api import build_cvs_hr_app
+from mcp_server_kit.cvs_hr_router import CvsHrRouterMCPServer
 from mcp_server_kit.cvs_identity import CvsIdentityMCPServer
 from mcp_server_kit.onboarding import OnboardingMCPServer
 from mcp_server_kit.pto import PtoMCPServer
@@ -69,6 +71,7 @@ SERVER_REGISTRY: list[tuple[str, type]] = [
     ("workday_hcm", WorkdayHcmMCPServer),
     ("time_attendance", TimeAttendanceMCPServer),
     ("servicenow_hrsd", ServicenowHrsdMCPServer),
+    ("cvs_hr_router", CvsHrRouterMCPServer),
 ]
 
 # Plain (non-MCP) REST apps: (mount_path, zero-arg app factory). Mounted

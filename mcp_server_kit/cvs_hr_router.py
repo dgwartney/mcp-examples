@@ -48,11 +48,12 @@ class CvsHrRouterMCPServer(AuthenticatedMCPServer):
                 text: The caller's words, verbatim.
                 expecting: Optional hint: ``consent``, ``pto_target`` or ``next``.
 
-            Returns:
+            Returns (all strings):
                 intent (pay|pto|leave|recap|language|close|other|none),
-                pending_intent, intents, consent (yes|no|unclear), target_hours,
-                recap_language (es|en|""), wants_spanish, language_name,
-                wants_human, expecting.
+                pending_intent, intents (comma-separated, order spoken),
+                consent (yes|no|unclear), target_hours ("80", or "" if none),
+                recap_language (es|en|""), wants_spanish (yes|no), language_name,
+                wants_human (yes|no), leave_topic (parental|other|""), expecting.
             """
             args = dict(text=text, expecting=expecting)
             return hr_db.audited(SYSTEM, "interpret_reply", args,

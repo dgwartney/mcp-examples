@@ -303,12 +303,12 @@ Four mock MCP servers that mirror the systems a CVS Health Colleague Service voi
 | `/cvs_identity/mcp` | `cvs_identity.py` | `verify_colleague(colleague_id="", mobile="", attempt=1)`, `revoke_verification(verification_id)` |
 | `/workday_hcm/mcp` | `workday_hcm.py` | `get_worker(worker_id, verification_id)`, `get_time_off_balance(worker_id, verification_id)`, `project_time_off(worker_id, target_hours, verification_id)`, `evaluate_pay_correction(worker_id, hours, verification_id)` (read-only; never writes payroll) |
 | `/time_attendance/mcp` | `time_attendance.py` | `get_timecard(worker_id, period_end="", verification_id)`, `submit_timecard_correction(worker_id, period_end, dates, remove_auto_deduct="meal", audit_note, consent, exclude_dates, verification_id)`, `cancel_timecard_correction(verification_id, correction_id)` |
-| `/cvs_hr_router/mcp` | `cvs_hr_router.py` | `interpret_reply(text, expecting="")`: deterministic keyword rules (English and Spanish, in `cvs_hr_router_rules.py`) that return `intent`, `pending_intent`, `intents`, `consent`, `target_hours`, `recap_language`, `wants_spanish`, `language_name`, `wants_human`, `expecting`. Needs no verification; writes only an audit row |
-| `/servicenow_hrsd/mcp` | `servicenow_hrsd.py` | `create_hr_case(subject_person, hr_service, contact_type, short_description, description, related_records, state, resolved_by, assignment_group, verification_id)`, `add_work_note(number, note, verification_id)`, `get_hr_cases(subject_person, state, verification_id)` |
+| `/cvs_hr_router/mcp` | `cvs_hr_router.py` | `interpret_reply(text, expecting="")`: deterministic keyword rules (English and Spanish, in `cvs_hr_router_rules.py`) that return only strings: `intent`, `pending_intent`, `intents` (comma-separated), `consent`, `target_hours` (`""` if none), `recap_language`, `wants_spanish` (yes/no), `language_name`, `wants_human` (yes/no), `leave_topic` (parental/other/""), `expecting`. Needs no verification; writes only an audit row |
+| `/servicenow_hrsd/mcp` | `servicenow_hrsd.py` | `create_hr_case(subject_person, hr_service, contact_type, short_description, description, related_records, state, resolved_by, assignment_group, verification_id, leave_discussed="no", language="en")` (returns `sms_body`, the en/es recap built from what happened in the call; an empty `description` is filled from the same facts), `add_work_note(number, note, verification_id)`, `get_hr_cases(subject_person, state, verification_id)` |
 
 **Rules the servers enforce:**
 
-- `verify_colleague` strips non-digits (7 digits = colleague ID, 10 = mobile) and issues a `verification_id`. It is stateless across attempts: a failure with `attempt >= 2` returns `escalate=true`.
+- `verify_colleague` turns spoken digits into numerals (English zero/oh/one–nine and "double/triple X", Spanish cero–nueve), strips the rest (7 digits = colleague ID, 10 = mobile) and issues a `verification_id`. It is stateless across attempts: a failure with `attempt >= 2` returns `escalate=true`.
 - Every other tool returns `{"error": "not_verified"}` unless the `verification_id` is active and covers the worker. The one exception is `create_hr_case(hr_service="Identity verification")` with no `subject_person`, whose text is stored with digits masked.
 - **Per-call sandbox:** corrections and cases are keyed by `verification_id`, and reads overlay them on the seed, so concurrent calls never see each other's writes.
 - `submit_timecard_correction` requires `consent=true`.
@@ -316,7 +316,7 @@ Four mock MCP servers that mirror the systems a CVS Health Colleague Service voi
 - **Dates** are relative to the as-of date: today by default, or `CVS_HR_AS_OF`.
   - The last closed week ends on the most recent Saturday on or before it.
   - Payday is period end + 13 days, then every 14 days.
-  - Every date and amount has `*_display_en` / `*_display_es` strings.
+  - Every date, amount, hour count and yes/no flag the agent speaks has a string display field (`*_display`, `*_display_en`, `*_display_es`), so templates never format numbers.
 - After a reset, case numbers start at `HR-<year>-0917`.
 - `sms_to` comes from `CVS_HR_DEMO_SMS_TO` only while the SMS switch is on (default **off**); otherwise `sms_to=""` and `sms_suppressed=true`.
 

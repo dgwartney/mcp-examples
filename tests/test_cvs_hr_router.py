@@ -52,21 +52,22 @@ class TestGoldenDialog:
 
     def test_line_10_pto_target_80(self):
         out = interp(GOLDEN[10], "next")
-        assert (out["intent"], out["target_hours"]) == ("pto", 80)
+        assert (out["intent"], out["target_hours"]) == ("pto", "80")
 
     def test_line_12_leave_beats_paid_time_off(self):
         out = interp(GOLDEN[12])
-        assert out["intent"] == "leave" and "pto" not in out["intents"]
+        assert out["intent"] == "leave" and "pto" not in out["intents"].split(",")
+        assert out["leave_topic"] == "parental"
 
     def test_line_14_recap_in_spanish(self):
         out = interp(GOLDEN[14])
         assert (out["intent"], out["recap_language"]) == ("recap", "es")
-        assert out["wants_spanish"] is False  # one-off recap, not a switch for the call
+        assert out["wants_spanish"] == "no"  # one-off recap, not a switch for the call
 
     def test_line_16_french(self):
         out = interp(GOLDEN[16])
         assert (out["intent"], out["language_name"]) == ("language", "French")
-        assert out["wants_spanish"] is False
+        assert out["wants_spanish"] == "no"
 
     def test_line_18_close(self):
         assert interp(GOLDEN[18])["intent"] == "close"
@@ -111,7 +112,7 @@ class TestVarianceRows:
         assert interp(text, "consent")["consent"] == "yes"
 
     def test_si_por_favor_is_spanish(self):
-        assert interp("sí, por favor")["wants_spanish"] is True
+        assert interp("sí, por favor")["wants_spanish"] == "yes"
 
     @pytest.mark.parametrize("text, expecting, hours", [
         ("two weeks off", "", 80), ("five days", "pto_target", 40), ("five days", "", 40),
@@ -120,7 +121,7 @@ class TestVarianceRows:
         ("diez días", "pto_target", 80), ("half a day", "", 8), ("2.5 days", "", 20)])
     def test_pto_targets(self, text, expecting, hours):
         out = interp(text, expecting)
-        assert out["target_hours"] == hours and out["intent"] == "pto"
+        assert out["target_hours"] == str(hours) and out["intent"] == "pto"
 
     def test_parse_target_hours_directly(self):
         assert r.parse_target_hours("two weeks") == 80
@@ -128,7 +129,7 @@ class TestVarianceRows:
 
     def test_bare_hours_without_hint_is_pay(self):
         out = interp("40 hours")
-        assert (out["intent"], out["target_hours"]) == ("pay", 40)
+        assert (out["intent"], out["target_hours"]) == ("pay", "40")
 
     @pytest.mark.parametrize("text", ["Can I talk to someone?", "W-2 reprint",
                                       "change my bank details", "Are you a robot?"])
@@ -136,8 +137,27 @@ class TestVarianceRows:
         assert interp(text)["intent"] == "other"
 
     def test_talk_to_someone_flags_human(self):
-        assert interp("Can I talk to someone?")["wants_human"] is True
-        assert interp("W-2 reprint")["wants_human"] is False
+        assert interp("Can I talk to someone?")["wants_human"] == "yes"
+        assert interp("W-2 reprint")["wants_human"] == "no"
+
+
+class TestLeaveTopic:
+
+    def test_recording_wording_is_parental(self):
+        out = interp("My wife and I are expecting in February. As the father, "
+                     "do I get paid time off?")
+        assert (out["intent"], out["leave_topic"]) == ("leave", "parental")
+
+    @pytest.mark.parametrize("text, topic", [
+        ("Is there maternity leave?", "parental"), ("adoption leave", "parental"),
+        ("how does FMLA work", "other"), ("bereavement leave", "other"),
+        ("HSA enrollment dates", "other"), ("what's my PTO balance", ""), ("no, leave it", "")])
+    def test_topics(self, text, topic):
+        assert interp(text)["leave_topic"] == topic
+
+    @pytest.mark.parametrize("text", list(GOLDEN.values()) + ["", "sí, por favor", "40 hours"])
+    def test_every_field_is_a_string(self, text):
+        assert all(isinstance(v, str) for v in interp(text).values())
 
 
 class TestIntentRules:
@@ -145,7 +165,7 @@ class TestIntentRules:
     @pytest.mark.parametrize("text", ["", "   ", None])
     def test_none(self, text):
         out = r.interpret_reply(text).to_dict()
-        assert out["intent"] == "none" and out["intents"] == [] and out["target_hours"] == 0
+        assert out["intent"] == "none" and out["intents"] == "" and out["target_hours"] == ""
 
     def test_thanks_plus_pto_is_pto(self):
         assert interp("thanks, and what's my PTO")["intent"] == "pto"
@@ -176,7 +196,7 @@ class TestIntentRules:
 
     def test_benefits_and_pto_keep_both_without_family_words(self):
         out = interp("benefits question, then my PTO balance")
-        assert out["intents"] == ["leave", "pto"]
+        assert out["intents"] == "leave,pto"
 
 
 class TestLanguages:
@@ -192,14 +212,14 @@ class TestLanguages:
 
     def test_speaking_spanish_is_not_a_language_limit(self):
         out = interp("do you speak spanish?")
-        assert out["intent"] == "other" and out["wants_spanish"] is True
+        assert out["intent"] == "other" and out["wants_spanish"] == "yes"
 
     @pytest.mark.parametrize("text, wants", [
         ("español", True), ("dos", True), ("Spanish, please", True),
         ("Hola, necesito ayuda con mi cheque", True), ("my paycheck is short", False),
         ("recap that in Spanish", False), ("no", False)])
     def test_wants_spanish(self, text, wants):
-        assert interp(text)["wants_spanish"] is wants
+        assert interp(text)["wants_spanish"] == ("yes" if wants else "no")
 
     @pytest.mark.parametrize("text, lang", [
         ("recap in Spanish", "es"), ("resumen en español", "es"),
@@ -227,8 +247,9 @@ class TestRouterServer:
         out = json.loads(result.content[0].text)
         assert set(out) == {"intent", "pending_intent", "intents", "consent", "target_hours",
                             "recap_language", "wants_spanish", "language_name", "wants_human",
-                            "expecting"}
-        assert (out["intent"], out["target_hours"], out["expecting"]) == ("pto", 80, "pto_target")
+                            "leave_topic", "expecting"}
+        assert all(isinstance(v, str) for v in out.values())
+        assert (out["intent"], out["target_hours"], out["expecting"]) == ("pto", "80", "pto_target")
         rows = CvsHrDatabase(str(tmp_path / "cvs_hr.db")).list_audit_events("cvs_hr_router")
         assert [(e["tool"], e["args"]["expecting"]) for e in rows] == [("interpret_reply", "pto_target")]
         assert rows[0]["verification_id"] is None

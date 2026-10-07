@@ -16,7 +16,7 @@ Author:
 
 import re
 import unicodedata
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 
 INTENTS = ("pay", "pto", "leave", "recap", "language", "close", "other", "none")
 HOURS_PER_DAY = 8
@@ -131,17 +131,23 @@ _HUMAN = _rx(r"\b(?:talk|speak) (?:to|with) (?:someone|somebody|a person|a human
 
 @dataclass(frozen=True)
 class ReplyInterpretation:
-    """Flat result of :func:`interpret_reply`."""
+    """
+    Flat result of :func:`interpret_reply`. Every field is a string so ABL
+    templates and conditions never have to format values: booleans are
+    ``"yes"``/``"no"``, ``target_hours`` is ``""`` when absent, and
+    ``intents`` is a comma-separated list in the order spoken.
+    """
 
     intent: str
-    pending_intent: str
-    intents: list = field(default_factory=list)
+    pending_intent: str = ""
+    intents: str = ""
     consent: str = "unclear"
-    target_hours: float = 0
+    target_hours: str = ""
     recap_language: str = ""
-    wants_spanish: bool = False
+    wants_spanish: str = "no"
     language_name: str = ""
-    wants_human: bool = False
+    wants_human: str = "no"
+    leave_topic: str = ""
     expecting: str = ""
 
     def to_dict(self) -> dict:
@@ -268,12 +274,28 @@ def interpret_reply(text: str, expecting: str = "") -> ReplyInterpretation:
     return ReplyInterpretation(
         intent=intent,
         pending_intent=intents[1] if len(intents) > 1 else "",
-        intents=intents,
+        intents=",".join(intents),
         consent=detect_consent(text),
-        target_hours=target,
+        target_hours=str(target) if target else "",
         recap_language=detect_recap_language(text),
-        wants_spanish=spanish_request or is_mostly_spanish(text),
+        wants_spanish=_yes_no(spanish_request or is_mostly_spanish(text)),
         language_name=detect_language_name(text),
-        wants_human=bool(_HUMAN.search(t)),
+        wants_human=_yes_no(_HUMAN.search(t)),
+        leave_topic=detect_leave_topic(text),
         expecting=(expecting or "").strip(),
     )
+
+
+def _yes_no(flag) -> str:
+    return "yes" if flag else "no"
+
+
+def detect_leave_topic(text: str) -> str:
+    """
+    ``'parental'`` when family/baby words appear in a leave question,
+    ``'other'`` for any other leave or benefits question, else ``''``.
+    """
+    t = fold(text)
+    if not _LEAVE.search(t):
+        return ""
+    return "parental" if _LEAVE_FAMILY.search(t) else "other"

@@ -30,15 +30,19 @@ class FakeServer:
 
 class TestServerRegistry:
 
-    def test_registry_has_eight_entries(self):
-        assert len(combined.SERVER_REGISTRY) == 8
+    def test_registry_has_twelve_entries(self):
+        assert len(combined.SERVER_REGISTRY) == 12
 
     def test_registry_prefixes(self):
         prefixes = [prefix for prefix, _ in combined.SERVER_REGISTRY]
         assert prefixes == [
             "greet", "contacts", "wikipedia", "weather", "messaging",
             "pto", "onboarding", "acme",
+            "cvs_identity", "workday_hcm", "time_attendance", "servicenow_hrsd",
         ]
+
+    def test_rest_registry_paths(self):
+        assert [path for path, _ in combined.REST_REGISTRY] == ["/acme/api", "/cvs_hr/api"]
 
 
 class TestBuild:
@@ -78,11 +82,11 @@ class TestBuild:
             transport="streamable-http",
         )
 
-    def test_build_real_registry_produces_eight_routes(self):
+    def test_build_real_registry_produces_twelve_routes(self):
         routes, sub_apps, servers = combined._build()
-        assert len(routes) == 8
-        assert len(sub_apps) == 8
-        assert len(servers) == 8
+        assert len(routes) == 12
+        assert len(sub_apps) == 12
+        assert len(servers) == 12
         assert [r.path for r in routes] == [
             "/greet",
             "/contacts",
@@ -92,6 +96,10 @@ class TestBuild:
             "/pto",
             "/onboarding",
             "/acme",
+            "/cvs_identity",
+            "/workday_hcm",
+            "/time_attendance",
+            "/servicenow_hrsd",
         ]
 
 
@@ -112,11 +120,17 @@ class TestApp:
             "/messaging",
             "/pto",
             "/onboarding",
+            "/cvs_hr/api",
+            "/cvs_identity",
+            "/workday_hcm",
+            "/time_attendance",
+            "/servicenow_hrsd",
         }
 
     def test_rest_mounts_come_before_mcp_mounts(self):
         paths = [r.path for r in combined.app.routes]
         assert paths.index("/acme/api") < paths.index("/acme")
+        assert paths.index("/cvs_hr/api") < paths.index("/cvs_identity")
 
     def test_unmounted_path_returns_404(self):
         with TestClient(combined.app) as client:
@@ -147,6 +161,8 @@ class TestCombinedEndpoints:
                     assert resp.status_code == 401, f"/{prefix}/mcp not reachable"
                 resp = await client.post("/not-registered/mcp", json=body)
                 assert resp.status_code == 404
+                assert (await client.get("/cvs_hr/api/health")).status_code == 200
+                assert (await client.post("/cvs_hr/api/reset")).status_code == 401
 
 
 class TestLifespan:

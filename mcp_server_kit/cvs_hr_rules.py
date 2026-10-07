@@ -24,6 +24,7 @@ import logging
 import math
 import os
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -389,12 +390,157 @@ def project_time_off(balance_hours: float, accrual_per_period_hours: float,
 
 
 # ---------------------------------------------------------------------------
+# Number display strings (templates never format numbers)
+# ---------------------------------------------------------------------------
+
+_EN_NUM = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+           "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+           "seventeen", "eighteen", "nineteen", "twenty"]
+_ES_UNITS = ["cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve",
+             "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete",
+             "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidós", "veintitrés",
+             "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho",
+             "veintinueve"]
+_ES_TENS = {3: "treinta", 4: "cuarenta", 5: "cincuenta", 6: "sesenta", 7: "setenta",
+            8: "ochenta", 9: "noventa"}
+
+
+def number_display(value) -> str:
+    """Plain number without trailing zeros: ``62.5``, ``7.8``, ``6.15``, ``80``."""
+    d = Decimal(str(value)).normalize()
+    return f"{d:f}"
+
+
+def yes_no(flag) -> str:
+    """``True -> 'yes'``, ``False -> 'no'``."""
+    return "yes" if flag else "no"
+
+
+def number_word_en(n: int) -> str:
+    """``3 -> 'three'`` up to twenty; digits beyond."""
+    return _EN_NUM[n] if 0 <= n <= 20 else str(n)
+
+
+def number_word_es(n: int) -> str:
+    """Spanish cardinal 0-99 (``17 -> 'diecisiete'``, ``45 -> 'cuarenta y cinco'``); digits beyond."""
+    if 0 <= n < 30:
+        return _ES_UNITS[n]
+    if 30 <= n < 100:
+        tens, units = divmod(n, 10)
+        return _ES_TENS[tens] + (f" y {_ES_UNITS[units]}" if units else "")
+    return str(n)
+
+
+def _whole_or_half(value) -> tuple[int, bool, bool]:
+    """``(whole part, has a half, is whole-or-half)``."""
+    d = Decimal(str(value))
+    whole = int(d)
+    frac = d - whole
+    return whole, frac == Decimal("0.5"), frac in (Decimal("0"), Decimal("0.5"))
+
+
+def quantity_display_en(value) -> str:
+    """``17.5 -> '17 and a half'``, ``3 -> '3'``, ``1.25 -> '1.25'``."""
+    whole, half, natural = _whole_or_half(value)
+    if not natural:
+        return number_display(value)
+    if half:
+        return "a half" if whole == 0 else f"{whole} and a half"
+    return str(whole)
+
+
+def quantity_display_es(value) -> str:
+    """``17.5 -> 'diecisiete y media'``, ``3 -> 'tres'``, ``1.25 -> '1.25'``."""
+    whole, half, natural = _whole_or_half(value)
+    if not natural:
+        return number_display(value)
+    if half:
+        return "media" if whole == 0 else f"{number_word_es(whole)} y media"
+    return number_word_es(whole)
+
+
+def hours_display_en(value) -> str:
+    """
+    Hours spoken naturally: ``1.5 -> 'an hour and a half'``, ``0.5 -> 'half an
+    hour'``, ``1 -> 'one hour'``, ``5 -> 'five hours'``, ``2.5 -> 'two and a half
+    hours'``; anything else ``'N.N hours'``.
+    """
+    whole, half, natural = _whole_or_half(value)
+    if not natural:
+        return f"{number_display(value)} hours"
+    if whole == 0:
+        return "half an hour" if half else "zero hours"
+    if whole == 1:
+        return "an hour and a half" if half else "one hour"
+    words = number_word_en(whole)
+    return f"{words} and a half hours" if half else f"{words} hours"
+
+
+def hours_display_es(value) -> str:
+    """``1.5 -> 'una hora y media'``, ``0.5 -> 'media hora'``, ``5 -> 'cinco horas'``."""
+    whole, half, natural = _whole_or_half(value)
+    if not natural:
+        return f"{number_display(value)} horas"
+    if whole == 0:
+        return "media hora" if half else "cero horas"
+    if whole == 1:
+        return "una hora y media" if half else "una hora"
+    words = number_word_es(whole)
+    return f"{words} horas y media" if half else f"{words} horas"
+
+
+# ---------------------------------------------------------------------------
 # Identity input handling
 # ---------------------------------------------------------------------------
 
+_SPOKEN_DIGITS = {
+    "zero": "0", "oh": "0", "o": "0", "one": "1", "two": "2", "three": "3", "four": "4",
+    "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+    "cero": "0", "uno": "1", "dos": "2", "tres": "3", "cuatro": "4", "cinco": "5",
+    "seis": "6", "siete": "7", "ocho": "8", "nueve": "9",
+}
+_REPEATS = {"double": 2, "triple": 3, "doble": 2, "triple": 3}
+
+
+def _fold(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text.lower())
+    return "".join(c for c in text if not unicodedata.combining(c))
+
+
 def digits_only(value) -> str:
-    """Strip everything but digits (``'774-2318' -> '7742318'``)."""
-    return re.sub(r"\D", "", str(value or ""))
+    """
+    Keep only the digits, after turning spoken digits into numerals:
+    ``'774-2318'``, ``'seven seven four two three one eight'`` and
+    ``'siete siete cuatro dos tres uno ocho'`` all give ``'7742318'``;
+    ``'double five'`` gives ``'55'``.
+
+    A spoken digit counts only next to another digit (spoken or written),
+    so "this one is 774-2318" stays 7 digits; "oh"/"o" count as zero only
+    right after a digit ("six oh two"), so "Oh, it's ..." adds nothing.
+    """
+    tokens = re.findall(r"[a-z]+|\d", _fold(str(value or "")))
+
+    def is_digit(i: int) -> bool:
+        return 0 <= i < len(tokens) and (tokens[i].isdigit() or tokens[i] in _SPOKEN_DIGITS)
+
+    out, repeat = [], 1
+    for i, tok in enumerate(tokens):
+        if tok in _REPEATS and is_digit(i + 1):
+            repeat = _REPEATS[tok]
+            continue
+        if tok.isdigit():
+            digit = tok
+        elif tok in ("oh", "o"):
+            digit = "0" if (is_digit(i - 1) or repeat > 1) else None
+        elif tok in _SPOKEN_DIGITS:
+            near = is_digit(i - 1) or is_digit(i + 1) or repeat > 1
+            digit = _SPOKEN_DIGITS[tok] if near else None
+        else:
+            digit = None
+        if digit is not None:
+            out.append(digit * repeat)
+        repeat = 1
+    return "".join(out)
 
 
 def classify_identifier(colleague_id: str, mobile: str) -> tuple[str, str]:

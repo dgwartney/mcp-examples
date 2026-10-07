@@ -39,8 +39,9 @@ class ServicenowHrsdMCPServer(AuthenticatedMCPServer):
         hr_db = self.hr_db
 
         @self.mcp.tool(description=(
-            "Open an HR case recording the call (or, for a caller who could not be verified, "
-            "an 'Identity verification' case with no subject_person)."))
+            "Open an HR case recording the call and get back the recap sms_body (or, for a "
+            "caller who could not be verified, an 'Identity verification' case with no "
+            "subject_person)."))
         def create_hr_case(
             subject_person: str = "",
             hr_service: str = "",
@@ -52,23 +53,29 @@ class ServicenowHrsdMCPServer(AuthenticatedMCPServer):
             resolved_by: str = "",
             assignment_group: str = "",
             verification_id: str = "",
+            leave_discussed: str = "no",
+            language: str = "en",
         ) -> dict:
             """
             Returns:
                 number (e.g. HR-2026-0917), sys_id, state, hr_service,
                 subject_person, related_records, related_records_detail,
-                assignment_group, resolved_by, opened_at, resolved_at, verified.
+                assignment_group, resolved_by, opened_at, resolved_at, verified,
+                sms_body (recap text for the SMS, in ``language``: en|es, built
+                from what happened in this call; leave line only when
+                leave_discussed="yes"), language.
             """
             args = dict(subject_person=subject_person, hr_service=hr_service,
                         contact_type=contact_type, short_description=short_description,
                         description=description, related_records=related_records, state=state,
                         resolved_by=resolved_by, assignment_group=assignment_group,
-                        verification_id=verification_id)
+                        verification_id=verification_id, leave_discussed=leave_discussed,
+                        language=language)
             return hr_db.audited(SYSTEM, "create_hr_case", args,
                                  lambda: hr_db.create_hr_case(
                                      verification_id, subject_person, hr_service, contact_type,
                                      short_description, description, related_records, state,
-                                     resolved_by, assignment_group))
+                                     resolved_by, assignment_group, leave_discussed, language))
 
         @self.mcp.tool(description="Add a work note to one of the verified colleague's HR cases.")
         def add_work_note(number: str, note: str, verification_id: str = "") -> dict:

@@ -394,8 +394,9 @@ class CvsHrDatabase:
         if row is None:
             escalate = attempt >= MAX_VERIFY_ATTEMPTS
             reason = "invalid_format" if kind == "invalid" else "no_match"
-            return {"verified": False, "verification_id": "", "attempts": attempt,
-                    "max_attempts": MAX_VERIFY_ATTEMPTS, "escalate": escalate,
+            return {"verified": False, "verified_display": "no", "verification_id": "",
+                    "attempts": attempt, "max_attempts": MAX_VERIFY_ATTEMPTS, "escalate": escalate,
+                    "escalate_display": rules.yes_no(escalate),
                     "reason": reason, "method": kind, "masked_input": rules.mask_digits(digits),
                     "message": ("Could not verify identity after "
                                 f"{attempt} attempts" if escalate else
@@ -404,10 +405,12 @@ class CvsHrDatabase:
         with self._conn() as conn:
             conn.execute("INSERT INTO verifications VALUES (?, ?, ?, 'active', ?, NULL)",
                          (vid, row["colleague_id"], kind, _now()))
-        return {"verified": True, "verification_id": vid, "colleague_id": row["colleague_id"],
+        return {"verified": True, "verified_display": "yes", "verification_id": vid,
+                "colleague_id": row["colleague_id"],
                 "display_name": row["display_name"], "first_name": row["first_name"],
                 "method": kind, "attempts": attempt, "max_attempts": MAX_VERIFY_ATTEMPTS,
-                "escalate": False, "masked_input": rules.mask_digits(digits),
+                "escalate": False, "escalate_display": "no",
+                "masked_input": rules.mask_digits(digits),
                 **self._sms_fields()}
 
     def revoke_verification(self, verification_id: str) -> dict:
@@ -457,6 +460,7 @@ class CvsHrDatabase:
                 "last_name": w["last_name"], "display_name": w["display_name"],
                 "job_title": w["job_title"],
                 "location": {"store": w["store"], "city": w["city"], "state": w["state"]},
+                "store_number": w["store"], "store_city": w["city"], "verified_display": "yes",
                 "base_rate_usd": float(base), "ot_rate_usd": float(rules.ot_rate(base)),
                 "employment_type": w["employment_type"],
                 "scheduled_weekly_hours": w["scheduled_weekly_hours"],
@@ -477,6 +481,9 @@ class CvsHrDatabase:
                 "balance_hours": t["balance_hours"],
                 "balance_days": rules.hours_to_days(t["balance_hours"]),
                 "accrual_per_period_hours": t["accrual_per_period_hours"],
+                "balance_hours_display": rules.number_display(t["balance_hours"]),
+                "balance_days_display": rules.number_display(rules.hours_to_days(t["balance_hours"])),
+                "accrual_display": rules.number_display(t["accrual_per_period_hours"]),
                 "as_of_period_end": self.calendar().period_end.isoformat(),
                 "verification_id": verification_id}
 
@@ -498,6 +505,11 @@ class CvsHrDatabase:
                   "accrual_per_period_hours": p.accrual_per_period_hours,
                   "hours_needed": p.hours_needed, "periods_needed": p.periods_needed,
                   "already_enough": p.already_enough,
+                  "hours_needed_display_en": rules.quantity_display_en(p.hours_needed),
+                  "hours_needed_display_es": rules.quantity_display_es(p.hours_needed),
+                  "periods_needed_display_en": rules.number_word_en(p.periods_needed),
+                  "periods_needed_display_es": rules.number_word_es(p.periods_needed),
+                  "target_hours_display": rules.number_display(p.target_hours),
                   "projected_pay_dates": [cal.pay_date(n).isoformat()
                                           for n in range(1, p.periods_needed + 1)],
                   "verification_id": verification_id}
@@ -540,7 +552,7 @@ class CvsHrDatabase:
                 "overtime": price.overtime, "pay_date": decision.pay_date.isoformat(),
                 "pay_date_display_en": rules.date_display_en(decision.pay_date),
                 "pay_date_display_es": rules.date_display_es(decision.pay_date),
-                "off_cycle": decision.off_cycle,
+                "off_cycle": decision.off_cycle, "off_cycle_display": rules.yes_no(decision.off_cycle),
                 "off_cycle_threshold_hours": decision.off_cycle_threshold_hours,
                 "rule_id": decision.rule_id, "read_only": True, "payroll_written": False,
                 "correction_id": latest[-1]["correction_id"] if latest else "",
@@ -641,6 +653,8 @@ class CvsHrDatabase:
             "corrected_dates": sorted(corrected),
             "break_punched": not open_days, "discrepancy": bool(open_days),
             "hours_short": short, "week_hours_worked": week_hours, "paid_hours": paid,
+            "hours_short_display_en": rules.hours_display_en(short),
+            "hours_short_display_es": rules.hours_display_es(short),
             "overtime": price.overtime, "ot_hours": price.ot_hours,
             "base_rate_usd": float(price.base_rate_usd), "ot_rate_usd": float(price.ot_rate_usd),
             "amount_usd": float(price.amount_usd),
@@ -716,6 +730,8 @@ class CvsHrDatabase:
                 "dates_display_es": rules.days_display_es(chosen_dates),
                 "excluded_dates": sorted(excluded), "remove_auto_deduct": "meal",
                 "audit_note": audit_note or "", "hours": hours, "overtime": price.overtime,
+                "hours_display_en": rules.hours_display_en(hours),
+                "hours_display_es": rules.hours_display_es(hours),
                 "amount_usd": float(price.amount_usd),
                 "amount_display_en": rules.amount_display_en(price.amount_usd),
                 "amount_display_es": rules.amount_display_es(price.amount_usd),
@@ -774,11 +790,16 @@ class CvsHrDatabase:
                        hr_service: str = "", contact_type: str = "phone",
                        short_description: str = "", description: str = "",
                        related_records: Any = None, state: str = "new",
-                       resolved_by: str = "", assignment_group: str = "") -> dict:
+                       resolved_by: str = "", assignment_group: str = "",
+                       leave_discussed: str = "no", language: str = "en") -> dict:
         """
         Open an HR case. The single unverified write allowed (H4) is
         ``hr_service="Identity verification"`` with no ``subject_person``;
         its free text is stored with digits masked.
+
+        Also returns ``sms_body`` (in ``language``, ``en``/``es``) built from
+        what actually happened in this verification's sandbox; an empty
+        ``description`` is filled from the same facts.
         """
         hr_service = (hr_service or "").strip()
         if not hr_service:
@@ -802,9 +823,14 @@ class CvsHrDatabase:
             vid, verified = verification_id, True
         resolved = state in _CLOSED_STATES
         now = _now()
+        lang = "es" if (language or "").strip().lower().startswith("es") else "en"
+        facts = self.call_facts(vid, subject, coerce_bool(leave_discussed))
         with self._conn() as conn:
             seq = self._next_seq(conn, "case_seq")
             number = f"HR-{self.calendar().as_of.year}-{seq:04d}"
+            sms_body = build_sms_body(number, facts, lang)
+            if not (description or "").strip():
+                description = build_case_description(facts)
             conn.execute(
                 "INSERT INTO sn_hr_cases VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]')",
                 (uuid.uuid4().hex, number, vid, subject, hr_service, contact_type or "phone",
@@ -814,8 +840,35 @@ class CvsHrDatabase:
                  now, now if resolved else None))
             row = conn.execute("SELECT * FROM sn_hr_cases WHERE number = ?", (number,)).fetchone()
         result = self._case_dict(row, vid)
-        result.update({"verified": verified, "verification_id": vid or ""})
+        result.update({"verified": verified, "verification_id": vid or "",
+                       "sms_body": sms_body, "language": lang})
         return result
+
+    def call_facts(self, verification_id: Optional[str], colleague_id: str,
+                   leave_discussed: bool) -> dict:
+        """
+        What happened in this call's sandbox, for the SMS and case text: the
+        latest applied correction (with its pay date), and whether the PTO
+        balance and projection were read (from this sandbox's audit rows).
+        """
+        facts: dict = {"correction": None, "balance": None, "projection": None,
+                       "leave": bool(leave_discussed and verification_id)}
+        if not verification_id:
+            return facts  # unverified: nothing about the call is disclosed
+        applied = self._corrections(verification_id, colleague_id, status="applied")
+        if applied:
+            c = applied[-1]
+            decision = rules.evaluate_pay_correction(c["hours"], self.calendar())
+            facts["correction"] = {**c, "off_cycle": decision.off_cycle,
+                                   "pay_date": decision.pay_date}
+        for e in self.list_audit_events("workday_hcm", verification_id):
+            if "error" in e["result"]:
+                continue
+            if e["tool"] == "get_time_off_balance":
+                facts["balance"] = e["result"]
+            elif e["tool"] == "project_time_off":
+                facts["projection"] = e["result"]
+        return facts
 
     def _visible_case(self, verification_id: str, colleague_id: str, number: str):
         with self._conn() as conn:
@@ -896,6 +949,60 @@ class CvsHrDatabase:
                                 "ORDER BY number", (vid,)).fetchall()
         view["servicenow_hrsd"] = {"cases": [self._case_dict(r, vid) for r in rows]}
         return view
+
+
+SMS_MAX_CHARS = 320
+_LEAVE_SOURCE_EN = "Parental leave: up to 4 weeks at 100% base pay (Leave of Absence Guide)."
+_LEAVE_SOURCE_ES = ("Licencia parental: hasta 4 semanas al 100% del salario base "
+                    "(Guía de Licencias).")
+
+
+def _fact_lines(facts: dict, lang: str) -> list[str]:
+    es = lang == "es"
+    lines = []
+    c = facts.get("correction")
+    if c:
+        hours = rules.number_display(c["hours"])
+        amount = rules.amount_display_en(c["amount_usd"])
+        when = (rules.date_display_es if es else rules.date_display_en)(c["pay_date"])
+        if c["off_cycle"]:
+            lines.append(f"Tarjeta de tiempo corregida: {hours} h, {amount}, pago fuera de ciclo el {when}."
+                         if es else f"Timecard corrected: {hours} h, {amount}, paid off-cycle on {when}.")
+        else:
+            lines.append(f"Tarjeta de tiempo corregida: {hours} h, {amount} en su cheque del {when}."
+                         if es else f"Timecard corrected: {hours} h, {amount} on your {when} paycheck.")
+    b = facts.get("balance")
+    if b:
+        h, d = rules.number_display(b["balance_hours"]), rules.number_display(b["balance_days"])
+        lines.append(f"Saldo de PTO: {h} h ({d} días)." if es else f"PTO balance: {h} h ({d} days).")
+    p = facts.get("projection")
+    if p and not p.get("already_enough"):
+        target = rules.number_display(p["target_hours"])
+        lines.append(f"~{target} h para {p['target_label_es']}." if es
+                     else f"~{target} h by {p['target_label_en']}.")
+    if facts.get("leave"):
+        lines.append(_LEAVE_SOURCE_ES if es else _LEAVE_SOURCE_EN)
+    return lines
+
+
+def build_sms_body(number: str, facts: dict, lang: str = "en") -> str:
+    """
+    The recap text for ``messaging__send_sms``: the case number plus only
+    what happened in the call. No PII (no IDs, phone numbers or names).
+    Lines are dropped from the end if it would exceed 320 characters.
+    """
+    header = (f"CVS Health Colleague Service — caso {number}." if lang == "es"
+              else f"CVS Health Colleague Service — case {number}.")
+    lines = _fact_lines(facts, lang)
+    while lines and len(" ".join([header] + lines)) > SMS_MAX_CHARS:
+        lines.pop()
+    return " ".join([header] + lines)
+
+
+def build_case_description(facts: dict) -> str:
+    """Case description from the call's facts (English), or a neutral default."""
+    lines = _fact_lines(facts, "en")
+    return " ".join(lines) if lines else "Colleague call handled by Savvy."
 
 
 def default_db_path() -> str:

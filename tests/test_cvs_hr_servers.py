@@ -461,6 +461,148 @@ class TestRecovery:
         assert r["error"] == "invalid_hours"
 
 
+class TestDisplayFields:
+    """String display fields the ABL templates read, at as-of 2026-10-08."""
+
+    @pytest.mark.asyncio
+    async def test_display_strings(self, systems):
+        v = await systems.verify("seven seven four two three one eight")
+        assert (v["verified"], v["verified_display"], v["escalate_display"]) == (True, "yes", "no")
+        vid = v["verification_id"]
+        w = await systems.call("workday_hcm", "get_worker", worker_id=DANIEL, verification_id=vid)
+        assert (w["store_number"], w["store_city"], w["verified_display"]) == ("6218", "Phoenix", "yes")
+        tc = await systems.call("time_attendance", "get_timecard", worker_id=DANIEL, verification_id=vid)
+        assert tc["hours_short_display_en"] == "an hour and a half"
+        assert tc["hours_short_display_es"] == "una hora y media"
+        b = await systems.call("workday_hcm", "get_time_off_balance", worker_id=DANIEL, verification_id=vid)
+        assert (b["balance_hours_display"], b["balance_days_display"], b["accrual_display"]) == \
+            ("62.5", "7.8", "6.15")
+        p = await systems.call("workday_hcm", "project_time_off", worker_id=DANIEL,
+                               target_hours=80, verification_id=vid)
+        assert (p["hours_needed_display_en"], p["hours_needed_display_es"]) == \
+            ("17 and a half", "diecisiete y media")
+        assert (p["periods_needed_display_en"], p["periods_needed_display_es"]) == ("three", "tres")
+        assert p["target_hours_display"] == "80"
+        e = await systems.call("workday_hcm", "evaluate_pay_correction", worker_id=DANIEL,
+                               hours=1.5, verification_id=vid)
+        assert e["off_cycle_display"] == "no"
+        for result in (v, w, b, p, e):
+            for key, value in result.items():
+                if key.endswith(("_display", "_display_en", "_display_es")):
+                    assert isinstance(value, str), key
+
+    @pytest.mark.asyncio
+    async def test_failed_verify_displays(self, systems):
+        v = await systems.verify("3329019", attempt=2)
+        assert (v["verified_display"], v["escalate_display"]) == ("no", "yes")
+
+    @pytest.mark.asyncio
+    async def test_marcus_off_cycle_display(self, systems):
+        vid = (await systems.verify("8104467"))["verification_id"]
+        e = await systems.call("workday_hcm", "evaluate_pay_correction", worker_id="8104467",
+                               hours=5, verification_id=vid)
+        assert e["off_cycle_display"] == "yes"
+
+    @pytest.mark.asyncio
+    async def test_dates_omitted_defaults_to_all_deduction_dates(self, systems):
+        vid = (await systems.verify())["verification_id"]
+        c = await systems.call("time_attendance", "submit_timecard_correction", worker_id=DANIEL,
+                               period_end=DEMO["period_end"], consent=True, verification_id=vid)
+        assert c["dates"] == DEMO["deduction_dates"] and c["hours"] == 1.5
+        assert (c["hours_display_en"], c["hours_display_es"]) == ("an hour and a half", "una hora y media")
+
+
+class TestSmsBody:
+
+    async def _golden(self, systems, *, pto=True, projection=True, correct=True):
+        vid = (await systems.verify())["verification_id"]
+        cid = ""
+        if correct:
+            cid = (await systems.call("time_attendance", "submit_timecard_correction",
+                                      **correction_args(vid)))["correction_id"]
+        if pto:
+            await systems.call("workday_hcm", "get_time_off_balance", worker_id=DANIEL, verification_id=vid)
+        if projection:
+            await systems.call("workday_hcm", "project_time_off", worker_id=DANIEL,
+                               target_hours=80, verification_id=vid)
+        return vid, cid
+
+    @pytest.mark.asyncio
+    async def test_english_golden(self, systems):
+        vid, cid = await self._golden(systems)
+        case = await systems.call("servicenow_hrsd", "create_hr_case", subject_person=DANIEL,
+                                  hr_service="Timecard correction", related_records=[cid],
+                                  state="resolved", leave_discussed="yes", verification_id=vid)
+        assert case["sms_body"] == (
+            "CVS Health Colleague Service — case HR-2026-0917. "
+            "Timecard corrected: 1.5 h, $41.63 on your Friday, October 16th paycheck. "
+            "PTO balance: 62.5 h (7.8 days). ~80 h by mid-November. "
+            "Parental leave: up to 4 weeks at 100% base pay (Leave of Absence Guide).")
+        assert len(case["sms_body"]) <= 320 and case["language"] == "en"
+        assert DANIEL not in case["sms_body"] and "Reyes" not in case["sms_body"]
+        assert case["description"].startswith("Timecard corrected: 1.5 h, $41.63")
+
+    @pytest.mark.asyncio
+    async def test_spanish_golden(self, systems):
+        vid, _ = await self._golden(systems)
+        case = await systems.call("servicenow_hrsd", "create_hr_case", hr_service="Timecard correction",
+                                  leave_discussed="yes", language="es", description="given",
+                                  verification_id=vid)
+        assert case["sms_body"] == (
+            "CVS Health Colleague Service — caso HR-2026-0917. "
+            "Tarjeta de tiempo corregida: 1.5 h, $41.63 en su cheque del viernes 16 de octubre. "
+            "Saldo de PTO: 62.5 h (7.8 días). ~80 h para mediados de noviembre. "
+            "Licencia parental: hasta 4 semanas al 100% del salario base (Guía de Licencias).")
+        assert len(case["sms_body"]) <= 320 and case["description"] == "given"
+
+    @pytest.mark.asyncio
+    async def test_only_what_happened(self, systems):
+        vid, _ = await self._golden(systems, pto=False, projection=False, correct=False)
+        case = await systems.call("servicenow_hrsd", "create_hr_case", hr_service="General inquiry",
+                                  verification_id=vid)
+        assert case["sms_body"] == "CVS Health Colleague Service — case HR-2026-0917."
+        assert case["description"] == "Colleague call handled by Savvy."
+
+    @pytest.mark.asyncio
+    async def test_cancelled_correction_and_failed_reads_are_left_out(self, systems):
+        vid, cid = await self._golden(systems, pto=False, projection=False)
+        await systems.call("time_attendance", "cancel_timecard_correction", verification_id=vid,
+                           correction_id=cid)
+        await systems.call("workday_hcm", "project_time_off", worker_id=DANIEL, target_hours=0,
+                           verification_id=vid)
+        case = await systems.call("servicenow_hrsd", "create_hr_case", hr_service="Timecard correction",
+                                  verification_id=vid)
+        assert case["sms_body"] == "CVS Health Colleague Service — case HR-2026-0917."
+
+    @pytest.mark.asyncio
+    async def test_off_cycle_and_already_enough(self, systems):
+        vid = (await systems.verify("8104467"))["verification_id"]
+        await systems.call("time_attendance", "submit_timecard_correction", worker_id="8104467",
+                           period_end=DEMO["period_end"], consent=True, verification_id=vid)
+        await systems.call("workday_hcm", "project_time_off", worker_id="8104467",
+                           target_hours=8, verification_id=vid)
+        en = await systems.call("servicenow_hrsd", "create_hr_case", hr_service="Timecard correction",
+                                verification_id=vid)
+        assert "paid off-cycle on Tuesday, October 13th" in en["sms_body"] and "~" not in en["sms_body"]
+        es = await systems.call("servicenow_hrsd", "create_hr_case", hr_service="Timecard correction",
+                                language="es", verification_id=vid)
+        assert "pago fuera de ciclo el martes 13 de octubre" in es["sms_body"]
+
+    def test_sms_body_is_trimmed_to_320(self):
+        from mcp_server_kit.cvs_hr_database import build_sms_body
+        facts = {"correction": None, "balance": None, "projection": None, "leave": True}
+        long_number = "HR-" + "9" * 250
+        body = build_sms_body(long_number, facts, "en")
+        assert "Parental leave" not in body
+
+    @pytest.mark.asyncio
+    async def test_identity_case_has_header_only(self, systems):
+        r = await systems.call("servicenow_hrsd", "create_hr_case", hr_service="Identity verification",
+                               leave_discussed="yes")
+        assert r["sms_body"] == "CVS Health Colleague Service — case HR-2026-0917."
+        assert r["description"] == "Colleague call handled by Savvy."
+
+
 class TestOtherColleagues:
 
     @pytest.mark.asyncio

@@ -228,7 +228,7 @@ class TestIdentifiers:
 
     @pytest.mark.parametrize("cid, mobile, expected", [
         ("774-2318", "", ("colleague_id", "7742318")),
-        ("seven 774 2318", "", ("colleague_id", "7742318")),
+        ("ID 774 2318", "", ("colleague_id", "7742318")),
         ("", "(602) 555-0148", ("mobile", "6025550148")),
         ("", "+1 602 555 0148", ("mobile", "6025550148")),
         ("602-555-0148", "", ("mobile", "6025550148")),   # mobile said as an ID
@@ -245,3 +245,63 @@ class TestIdentifiers:
         assert rules.mask_digit_runs("tried 774-2381, then (602) 555-0199 at 3pm") == \
             "tried *****81, then (********99 at 3pm"
         assert rules.mask_digit_runs("") == ""
+
+
+class TestSpokenDigits:
+
+    @pytest.mark.parametrize("text, digits", [
+        ("seven seven four two three one eight", "7742318"),
+        ("my ID is seven seven four, two three one eight", "7742318"),
+        ("Seven-seven-four, two-three-one-eight", "7742318"),
+        ("six oh two, double five five, oh one four eight", "6025550148"),
+        ("six zero two five five five zero one four eight", "6025550148"),
+        ("triple five", "555"),
+        ("siete siete cuatro dos tres uno ocho", "7742318"),
+        ("seis cero dos, doble cinco cinco, cero uno cuatro ocho", "6025550148"),
+        ("774 two three one eight", "7742318"),
+        ("Oh, it's 774-2318", "7742318"),            # leading "oh" is not a zero
+        ("this one is 774-2318", "7742318"),         # an isolated spoken digit is ignored
+        ("double", ""), ("seven", ""), ("", ""), (None, ""),
+    ])
+    def test_digits_only(self, text, digits):
+        assert rules.digits_only(text) == digits
+
+    def test_classify_spoken_id_and_mobile(self):
+        assert rules.classify_identifier("seven seven four two three one eight", "") == \
+            ("colleague_id", "7742318")
+        assert rules.classify_identifier("", "six oh two five five five oh one four eight") == \
+            ("mobile", "6025550148")
+        assert rules.classify_identifier("siete siete cuatro dos tres uno ocho", "") == \
+            ("colleague_id", "7742318")
+
+
+class TestNumberDisplays:
+
+    @pytest.mark.parametrize("value, en, es", [
+        (1.5, "an hour and a half", "una hora y media"),
+        (0.5, "half an hour", "media hora"),
+        (1.0, "one hour", "una hora"),
+        (5.0, "five hours", "cinco horas"),
+        (2.5, "two and a half hours", "dos horas y media"),
+        (0, "zero hours", "cero horas"),
+        (25, "25 hours", "veinticinco horas"),
+        (1.25, "1.25 hours", "1.25 horas"),
+    ])
+    def test_hours(self, value, en, es):
+        assert rules.hours_display_en(value) == en
+        assert rules.hours_display_es(value) == es
+
+    @pytest.mark.parametrize("value, en, es", [
+        (17.5, "17 and a half", "diecisiete y media"), (3, "3", "tres"),
+        (0.5, "a half", "media"), (45, "45", "cuarenta y cinco"), (1.25, "1.25", "1.25"),
+        (40, "40", "cuarenta")])
+    def test_quantities(self, value, en, es):
+        assert rules.quantity_display_en(value) == en
+        assert rules.quantity_display_es(value) == es
+
+    def test_number_words_and_plain_numbers(self):
+        assert (rules.number_word_en(3), rules.number_word_es(3)) == ("three", "tres")
+        assert (rules.number_word_en(21), rules.number_word_es(100)) == ("21", "100")
+        assert [rules.number_display(v) for v in (62.5, 7.8, 6.15, 80.0, 80)] == \
+            ["62.5", "7.8", "6.15", "80", "80"]
+        assert (rules.yes_no(True), rules.yes_no(0)) == ("yes", "no")

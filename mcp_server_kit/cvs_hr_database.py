@@ -426,7 +426,52 @@ class CvsHrDatabase:
                 "method": kind, "attempts": attempt, "max_attempts": MAX_VERIFY_ATTEMPTS,
                 "escalate": False, "escalate_display": "no",
                 "masked_input": rules.mask_digits(digits),
-                **self._sms_fields()}
+                **self._sms_fields(),
+                **self.colleague_profile(vid, row["colleague_id"])}
+
+    PROFILE_TARGETS = (40, 80, 120)
+
+    def colleague_profile(self, verification_id: str, worker_id: str) -> dict:
+        """
+        Everything the call needs about a just-verified colleague, flat, so
+        the agent loads it with one tool call at authentication: the worker,
+        the latest closed timecard and its shortfall, the PTO balance and
+        accrual, projections to 40/80/120 h (``p80_hours_needed_display_en``,
+        ...) and the open HR cases. The keys match the agent's session values.
+        """
+        w = self.get_worker(verification_id, worker_id)
+        tc = self.timecard_view(worker_id, self.calendar().period_end, verification_id)
+        bal = self.get_time_off_balance(verification_id, worker_id)
+        cases = self.get_hr_cases(verification_id, worker_id, "open")
+        profile = {
+            "profile_loaded": "yes",
+            "job_title": w["job_title"], "store_number": w["store_number"],
+            "store_city": w["store_city"],
+            "base_rate_usd": w["base_rate_usd"], "ot_rate_usd": w["ot_rate_usd"],
+            "period_end": tc["period_end"],
+            "period_end_display_en": tc["period_end_display_en"],
+            "period_end_display_es": tc["period_end_display_es"],
+            "timecard_discrepancy": rules.yes_no(tc["discrepancy"]),
+            "deduction_days_display_en": tc["deduction_days_display_en"],
+            "deduction_days_display_es": tc["deduction_days_display_es"],
+            "hours_short": tc["hours_short"],
+            "hours_short_display_en": tc["hours_short_display_en"],
+            "hours_short_display_es": tc["hours_short_display_es"],
+            "amount_display_en": tc["amount_display_en"],
+            "amount_display_es": tc["amount_display_es"],
+            "pto_balance_hours": bal["balance_hours_display"],
+            "pto_balance_days": bal["balance_days_display"],
+            "accrual_hours": bal["accrual_display"],
+            "open_case_count": cases["count"],
+            "open_case_numbers": ", ".join(c["number"] for c in cases["cases"]),
+        }
+        for target in self.PROFILE_TARGETS:
+            p = self.project_time_off(verification_id, worker_id, target)
+            for key in ("target_hours_display", "hours_needed_display_en",
+                        "hours_needed_display_es", "periods_needed_display_en",
+                        "periods_needed_display_es", "target_label_en", "target_label_es"):
+                profile[f"p{target}_{key}"] = p[key]
+        return profile
 
     def revoke_verification(self, verification_id: str) -> dict:
         """End a verification (wrong person matched). Idempotent."""

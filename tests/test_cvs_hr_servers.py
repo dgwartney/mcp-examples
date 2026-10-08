@@ -666,6 +666,80 @@ class TestOtherColleagues:
 
 
 # ---------------------------------------------------------------------------
+# The colleague profile returned at authentication
+# ---------------------------------------------------------------------------
+
+class TestColleagueProfile:
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("cal", [DEMO, RECORDING], ids=["demo-2026-10-08", "recording-2026-09-01"])
+    async def test_daniel_profile_matches_the_lookup_tools(self, systems, monkeypatch, cal):
+        monkeypatch.setenv("CVS_HR_AS_OF", cal["as_of"])
+        systems.db.reset()
+        v = await systems.verify("774-2318")
+        assert v["profile_loaded"] == "yes"
+        assert (v["job_title"], v["store_number"], v["store_city"]) == (
+            "Pharmacy Technician", "6218", "Phoenix")
+        assert (v["base_rate_usd"], v["ot_rate_usd"]) == (18.50, 27.75)
+        assert v["period_end"] == cal["period_end"]
+        assert v["period_end_display_en"] == cal["period_end_display_en"]
+        assert v["period_end_display_es"] == cal["period_end_display_es"]
+        assert v["deduction_days_display_en"] == cal["deduction_days_display_en"]
+        assert v["deduction_days_display_es"] == cal["deduction_days_display_es"]
+        assert v["timecard_discrepancy"] == "yes" and v["hours_short"] == 1.5
+        assert v["amount_display_en"] == "$41.63"
+        assert (v["pto_balance_hours"], v["pto_balance_days"], v["accrual_hours"]) == (
+            "62.5", "7.8", "6.15")
+        assert v["p80_target_hours_display"] == "80"
+        assert v["p80_periods_needed_display_en"] == "three"
+        assert v["p80_target_label_en"] == cal["target_label_en"]
+        assert v["p80_target_label_es"] == cal["target_label_es"]
+        assert v["p40_target_label_en"] == "now" and v["p40_target_label_es"] == "ahora"
+        assert v["p120_target_hours_display"] == "120"
+        assert v["open_case_count"] == 0 and v["open_case_numbers"] == ""
+
+        # The profile is the same data the lookup tools return.
+        vid = v["verification_id"]
+        tc = await systems.call("time_attendance", "get_timecard", worker_id=DANIEL,
+                                verification_id=vid)
+        p = await systems.call("workday_hcm", "project_time_off", worker_id=DANIEL,
+                               target_hours=80, verification_id=vid)
+        assert v["hours_short_display_en"] == tc["hours_short_display_en"]
+        assert v["amount_display_es"] == tc["amount_display_es"]
+        assert v["p80_hours_needed_display_en"] == p["hours_needed_display_en"]
+        assert v["p80_hours_needed_display_es"] == p["hours_needed_display_es"]
+
+    @pytest.mark.asyncio
+    async def test_profile_costs_one_audit_row(self, systems):
+        systems.db.reset()
+        await systems.verify(DANIEL)
+        events = systems.db.list_audit_events()
+        assert [e["tool"] for e in events] == ["verify_colleague"]
+        assert events[0]["result"]["job_title"] == "Pharmacy Technician"
+
+    @pytest.mark.asyncio
+    async def test_clean_timecard_profile(self, systems):
+        v = await systems.verify("5530912")
+        assert v["timecard_discrepancy"] == "no" and v["hours_short"] == 0
+
+    @pytest.mark.asyncio
+    async def test_open_cases_are_listed(self, systems, hr):
+        first = hr.verify_colleague(DANIEL)
+        case = hr.create_hr_case(first["verification_id"], subject_person=DANIEL,
+                                 hr_service="Callback request", state="new")
+        profile = hr.colleague_profile(first["verification_id"], DANIEL)
+        assert profile["open_case_count"] == 1
+        assert profile["open_case_numbers"] == case["number"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("said, attempt", [("3329019", 1), ("774-231", 1), ("", 1)])
+    async def test_no_profile_without_a_match(self, systems, said, attempt):
+        r = await systems.verify(said, attempt=attempt)
+        assert r["verified"] is False
+        assert "profile_loaded" not in r and "job_title" not in r and "amount_display_en" not in r
+
+
+# ---------------------------------------------------------------------------
 # Sandboxes, ServiceNow, SMS switch, seeding
 # ---------------------------------------------------------------------------
 

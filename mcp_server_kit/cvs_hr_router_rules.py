@@ -18,7 +18,7 @@ import re
 import unicodedata
 from dataclasses import asdict, dataclass
 
-INTENTS = ("pay", "pto", "leave", "recap", "language", "close", "other", "none")
+INTENTS = ("pay", "pto", "leave", "recap", "language", "close", "ack", "other", "none")
 HOURS_PER_DAY = 8
 DAYS_PER_WEEK = 5
 
@@ -98,6 +98,11 @@ _NEGATE = _rx(
     r"\bcheck with my (?:manager|supervisor|boss)\b", r"\bhold off\b", r"\bno gracias\b",
     r"\btodavia no\b", r"\bnot yet\b", r"\blet me think\b", r"\bnever ?mind\b")
 _WAIT = re.compile(r"\bwait\b|\bhang on\b|\bespere\b")
+# A reply that only acknowledges ("Okay.", "Great, got it.") and asks for nothing.
+_ACK_WORD = (r"(?:ok(?:ay)?|alright|all right|great|good|sure|yeah|yes|yep|yup|got it|cool|"
+             r"perfect|fine|right|i see|sounds good|excellent|wonderful|awesome|mm+|uh huh|"
+             r"vale|bueno|claro|perfecto)")
+_ACK_ONLY = re.compile(r"^(?:\s*" + _ACK_WORD + r"[\s,.!]*)+$")
 # What a question at the consent step is about, answered from values already read.
 _ABOUT_DAYS = _rx(r"\bdays?\b", r"\bdates?\b", r"\bwhen\b", r"\bmonday|tuesday|wednesday|thursday|friday|saturday|sunday\b",
                   r"\bwhich (?:shifts?|ones?)\b", r"\bdias?\b", r"\bcuales\b", r"\bfechas?\b")
@@ -298,7 +303,7 @@ def interpret_reply(text: str, expecting: str = "") -> ReplyInterpretation:
         if expecting == "pto_target" or unit != "h":
             intents = ["pto"]
     if t and not intents:
-        intent = "other"
+        intent = "ack" if _ACK_ONLY.match(t) else "other"
     else:
         intent = intents[0] if intents else "none"
     spanish_request = bool(_SPANISH_REQUEST.search(t)) and intent != "recap"

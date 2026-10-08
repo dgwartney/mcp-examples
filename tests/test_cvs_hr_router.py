@@ -145,6 +145,20 @@ class TestVarianceRows:
     def test_other(self, text):
         assert interp(text)["intent"] == "other"
 
+    @pytest.mark.parametrize("text", ["Okay.", "Okay, great.", "Yeah.", "Alright, got it!",
+                                      "Mm, sounds good.", "Vale."])
+    def test_bare_acknowledgment_is_ack(self, text):
+        out = interp(text)
+        assert (out["intent"], out["intents"]) == ("ack", "")
+
+    def test_acknowledgment_keeps_consent_yes(self):
+        assert interp("Okay.", "consent")["consent"] == "yes"
+
+    @pytest.mark.parametrize("text", ["Okay, what is my PTO balance?", "Okay, great. Thanks very much.",
+                                      "Okay, but is that before tax?"])
+    def test_acknowledgment_with_more_is_not_ack(self, text):
+        assert interp(text)["intent"] != "ack"
+
     def test_talk_to_someone_flags_human(self):
         assert interp("Can I talk to someone?")["wants_human"] == "yes"
         assert interp("W-2 reprint")["wants_human"] == "no"

@@ -120,6 +120,10 @@ def is_acknowledgment(t: str) -> bool:
 # What a question at the consent step is about, answered from values already read.
 _ABOUT_DAYS = _rx(r"\bdays?\b", r"\bdates?\b", r"\bwhen\b", r"\bmonday|tuesday|wednesday|thursday|friday|saturday|sunday\b",
                   r"\bwhich (?:shifts?|ones?)\b", r"\bdias?\b", r"\bcuales\b", r"\bfechas?\b")
+# Tax, gross/net and take-home aren't in the timecard data: "I don't have that detail".
+_ABOUT_TAX = _rx(r"\btax(?:es|ed)?\b", r"\bpre-?tax\b", r"\bafter-?tax\b", r"\bgross\b",
+                 r"\bnet\b", r"\btake-?home\b", r"\bwithholding\b", r"\bwithheld\b",
+                 r"\bimpuestos?\b")
 _ABOUT_AMOUNT = _rx(r"\bhow much\b", r"\bamount\b", r"\bdollars?\b", r"\bmoney\b", r"\bhours?\b",
                     r"\bcuanto\b", r"\bhoras?\b")
 
@@ -257,6 +261,8 @@ def detect_question_topic(text: str) -> str:
     t = fold(text)
     if not _QUESTION.search(t):
         return ""
+    if _ABOUT_TAX.search(t):
+        return "other"
     if _ABOUT_DAYS.search(t):
         return "days"
     if _ABOUT_AMOUNT.search(t):

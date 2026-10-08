@@ -105,7 +105,10 @@ class TestVarianceRows:
         ("Wait, which days?", "days"), ("Wait which days", "days"),
         ("which days were those?", "days"), ("Which days was that", "days"),
         ("Hang on, when was that?", "days"), ("how much is that again", "amount"),
-        ("Hang on, is that before tax?", "other"), ("¿Cuáles días?", "days")])
+        ("Hang on, is that before tax?", "other"), ("¿Cuáles días?", "days"),
+        ("Hang on is that before tax as far as the money goes", "other"),
+        ("how much is my take-home on that", "other"), ("is that gross or net?", "other"),
+        ("¿Es antes de impuestos?", "other")])
     def test_barge_in_question_is_not_consent(self, text, topic):
         r = interp(text, "consent")
         assert (r["consent"], r["question_topic"]) == ("question", topic)

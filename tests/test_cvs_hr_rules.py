@@ -305,3 +305,9 @@ class TestNumberDisplays:
         assert [rules.number_display(v) for v in (62.5, 7.8, 6.15, 80.0, 80)] == \
             ["62.5", "7.8", "6.15", "80", "80"]
         assert (rules.yes_no(True), rules.yes_no(0)) == ("yes", "no")
+
+
+def test_group_digits():
+    assert rules.group_digits("774231") == "774-231"
+    assert rules.group_digits("seven seven four") == "774"
+    assert rules.group_digits("") == ""

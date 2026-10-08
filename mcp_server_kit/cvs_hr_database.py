@@ -47,6 +47,8 @@ from mcp_server_kit import cvs_hr_rules as rules
 SMS_TO_ENV = "CVS_HR_DEMO_SMS_TO"
 FIRST_CASE_SEQ = 917
 MAX_VERIFY_ATTEMPTS = 2
+# Fewer digits than this means no number was given yet, not a garbled one.
+MIN_PARTIAL_DIGITS = 3
 SYSTEMS = ("cvs_identity", "workday_hcm", "time_attendance", "servicenow_hrsd", "cvs_hr_router")
 CASE_STATES = {
     "new", "ready", "work_in_progress", "awaiting_info", "resolved",
@@ -391,13 +393,25 @@ class CvsHrDatabase:
                 row = conn.execute(
                     f"SELECT * FROM identity_colleagues WHERE {column} = ? AND status = 'active'",
                     (digits,)).fetchone()
+        if kind == "invalid":
+            # Not an attempt: the caller is still finding the number ("hold on, let me
+            # get my ID") or only part of it came through. Never counts, never escalates.
+            outcome = "no_number" if len(digits) < MIN_PARTIAL_DIGITS else "partial"
+            return {"verified": False, "verified_display": "no", "verification_id": "",
+                    "outcome": outcome, "counted": False, "attempts": attempt,
+                    "max_attempts": MAX_VERIFY_ATTEMPTS, "escalate": False,
+                    "escalate_display": "no", "reason": outcome, "method": kind,
+                    "heard_display": rules.group_digits(digits) if outcome == "partial" else "",
+                    "masked_input": rules.mask_digits(digits),
+                    "message": ("No colleague ID or mobile number was given yet."
+                                if outcome == "no_number" else
+                                "Only part of a number was heard.")}
         if row is None:
             escalate = attempt >= MAX_VERIFY_ATTEMPTS
-            reason = "invalid_format" if kind == "invalid" else "no_match"
             return {"verified": False, "verified_display": "no", "verification_id": "",
-                    "attempts": attempt, "max_attempts": MAX_VERIFY_ATTEMPTS, "escalate": escalate,
+                    "outcome": "no_match", "counted": True, "attempts": attempt, "max_attempts": MAX_VERIFY_ATTEMPTS, "escalate": escalate,
                     "escalate_display": rules.yes_no(escalate),
-                    "reason": reason, "method": kind, "masked_input": rules.mask_digits(digits),
+                    "reason": "no_match", "method": kind, "masked_input": rules.mask_digits(digits),
                     "message": ("Could not verify identity after "
                                 f"{attempt} attempts" if escalate else
                                 "No colleague record matches that number.")}
@@ -406,6 +420,7 @@ class CvsHrDatabase:
             conn.execute("INSERT INTO verifications VALUES (?, ?, ?, 'active', ?, NULL)",
                          (vid, row["colleague_id"], kind, _now()))
         return {"verified": True, "verified_display": "yes", "verification_id": vid,
+                "outcome": "verified", "counted": True,
                 "colleague_id": row["colleague_id"],
                 "display_name": row["display_name"], "first_name": row["first_name"],
                 "method": kind, "attempts": attempt, "max_attempts": MAX_VERIFY_ATTEMPTS,

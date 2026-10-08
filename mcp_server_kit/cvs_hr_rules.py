@@ -570,6 +570,12 @@ def mask_digits(value: str, keep: int = 2) -> str:
     return "*" * max(0, len(d) - keep) + d[-keep:]
 
 
+def group_digits(value: str) -> str:
+    """Group digits for read-back the way callers say them: ``'774231' -> '774-231'``."""
+    d = digits_only(value)
+    return d if len(d) <= 3 else f"{d[:3]}-{d[3:]}"
+
+
 _DIGIT_RUN = re.compile(r"\d[\d\-\s().]{2,}\d")
 
 

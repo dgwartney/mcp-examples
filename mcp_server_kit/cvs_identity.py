@@ -47,6 +47,9 @@ class CvsIdentityMCPServer(AuthenticatedMCPServer):
                 verified, verification_id, colleague_id, display_name, first_name,
                 method, sms_to, sms_suppressed, attempts, escalate (true after the
                 2nd failed attempt), masked_input; on failure also reason.
+                outcome is verified | no_match | partial | no_number. partial and
+                no_number (the caller is still finding the number) are not counted
+                as attempts and never escalate; partial also gives heard_display.
             """
             args = dict(colleague_id=colleague_id, mobile=mobile, attempt=attempt)
             return hr_db.audited(SYSTEM, "verify_colleague", args,

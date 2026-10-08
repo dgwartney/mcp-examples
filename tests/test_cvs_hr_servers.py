@@ -247,9 +247,35 @@ class TestVerification:
         assert "after 2 attempts" in second["message"]
 
     @pytest.mark.asyncio
-    async def test_invalid_format(self, systems):
-        r = await systems.verify("774-231")
-        assert r["verified"] is False and r["reason"] == "invalid_format"
+    async def test_partial_number_is_read_back_not_counted(self, systems):
+        r = await systems.verify("774-231", attempt=2)
+        assert r["verified"] is False and (r["outcome"], r["reason"]) == ("partial", "partial")
+        assert r["counted"] is False and r["escalate"] is False
+        assert r["heard_display"] == "774-231"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("said", [
+        "Hold on while I find my identification 7 digits",
+        "let me grab my badge",
+        "uh, give me 10 seconds",
+        "Un momento, déjeme buscar mi número",
+        "",
+    ])
+    async def test_stalling_is_no_number_and_never_escalates(self, systems, said):
+        r = await systems.verify(said, attempt=2)
+        assert (r["verified"], r["outcome"], r["counted"]) == (False, "no_number", False)
+        assert (r["escalate"], r["escalate_display"], r["heard_display"]) == (False, "no", "")
+
+    @pytest.mark.asyncio
+    async def test_spoken_start_of_id_is_partial(self, systems):
+        r = await systems.verify("uh, seven seven four")
+        assert (r["outcome"], r["heard_display"]) == ("partial", "774")
+
+    @pytest.mark.asyncio
+    async def test_outcomes_on_match_and_miss(self, systems):
+        assert (await systems.verify())["outcome"] == "verified"
+        miss = await systems.verify("3329081")
+        assert (miss["outcome"], miss["counted"]) == ("no_match", True)
 
     @pytest.mark.asyncio
     async def test_attempt_is_coerced(self, hr):

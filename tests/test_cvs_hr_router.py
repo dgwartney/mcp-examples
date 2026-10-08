@@ -280,6 +280,22 @@ class TestLanguages:
     def test_recap_language(self, text, lang):
         assert interp(text)["recap_language"] == lang
 
+    @pytest.mark.parametrize("text, intent, lang", [
+        ("Could you explain that again in Spanish?", "recap", "es"),
+        ("Say that again", "recap", ""),
+        ("Can you go through everything again in English?", "recap", "en"),
+        ("And again in Spanish, please", "recap", "es")])
+    def test_recap_again_phrasing(self, text, intent, lang):
+        out = interp(text)
+        assert (out["intent"], out["recap_language"]) == (intent, lang)
+        assert out["wants_spanish"] == "no"
+
+    @pytest.mark.parametrize("text", ["Can we continue in Spanish?", "again", "in Spanish"])
+    def test_spanish_switch_is_not_a_recap(self, text):
+        out = interp(text)
+        assert out["intent"] != "recap"
+        assert out["wants_spanish"] == "yes" or text == "again"
+
     def test_fold(self):
         assert r.fold("  ESPAÑOL’s  ") == "espanol's"
 

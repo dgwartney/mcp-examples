@@ -55,7 +55,9 @@ _PAY = _rx(  # strong pay words
 _PAY_WEAK = _rx(r"\bpay\b", r"\bhours?\b", r"\bhoras\b")  # only when nothing else matched
 _RECAP = _rx(
     r"\brecap\w*", r"\bsummari[sz]e\b", r"\bsummary\b", r"\brepeat everything\b",
-    r"\bgo over\b", r"\bsum (?:it )?up\b", r"\bresumen\b", r"\bresuma\b", r"\brepita\b")
+    r"\bgo over\b", r"\bsum (?:it )?up\b", r"\bresumen\b", r"\bresuma\b", r"\brepita\b",
+    r"\b(?:explain|say|go through|go over) (?:that|it|this|everything) again\b",
+    r"\bagain in (?:spanish|english|espanol|ingles)\b")
 _CLOSE = _rx(
     r"\bthat'?s all\b", r"\bthat'?s it\b", r"\bthanks\b", r"\bthank you\b", r"\bbye\b",
     r"\bgoodbye\b", r"\bnothing else\b", r"\bgracias\b", r"\badios\b", r"\bhasta luego\b")

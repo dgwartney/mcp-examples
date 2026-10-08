@@ -101,10 +101,19 @@ class TestVarianceRows:
         assert interp("no, leave it")["intent"] == "other"
         assert interp("let me check with my manager")["intent"] == "other"
 
-    @pytest.mark.parametrize("text", ["Wait, which days?", "Hang on, is that before tax?",
-                                      "which days were those?"])
+    @pytest.mark.parametrize("text, topic", [
+        ("Wait, which days?", "days"), ("Wait which days", "days"),
+        ("which days were those?", "days"), ("Which days was that", "days"),
+        ("Hang on, when was that?", "days"), ("how much is that again", "amount"),
+        ("Hang on, is that before tax?", "other"), ("¿Cuáles días?", "days")])
+    def test_barge_in_question_is_not_consent(self, text, topic):
+        r = interp(text, "consent")
+        assert (r["consent"], r["question_topic"]) == ("question", topic)
+
+    @pytest.mark.parametrize("text", ["hmm", "the thing"])
     def test_consent_unclear(self, text):
-        assert interp(text, "consent")["consent"] == "unclear"
+        r = interp(text, "consent")
+        assert (r["consent"], r["question_topic"]) == ("unclear", "")
 
     @pytest.mark.parametrize("text", ["sí, por favor", "go ahead", "yes, but when will I get it?",
                                       "sure, fix it", "claro"])
@@ -266,7 +275,7 @@ class TestRouterServer:
             result = await client.call_tool("interpret_reply",
                                             {"text": GOLDEN[10], "expecting": "pto_target"})
         out = json.loads(result.content[0].text)
-        assert set(out) == {"intent", "pending_intent", "intents", "consent", "target_hours",
+        assert set(out) == {"intent", "pending_intent", "intents", "consent", "question_topic", "target_hours",
                             "recap_language", "wants_spanish", "language_name", "wants_human",
                             "leave_topic", "expecting"}
         assert all(isinstance(v, str) for v in out.values())

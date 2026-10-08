@@ -98,6 +98,11 @@ _NEGATE = _rx(
     r"\bcheck with my (?:manager|supervisor|boss)\b", r"\bhold off\b", r"\bno gracias\b",
     r"\btodavia no\b", r"\bnot yet\b", r"\blet me think\b", r"\bnever ?mind\b")
 _WAIT = re.compile(r"\bwait\b|\bhang on\b|\bespere\b")
+# What a question at the consent step is about, answered from values already read.
+_ABOUT_DAYS = _rx(r"\bdays?\b", r"\bdates?\b", r"\bwhen\b", r"\bmonday|tuesday|wednesday|thursday|friday|saturday|sunday\b",
+                  r"\bwhich (?:shifts?|ones?)\b", r"\bdias?\b", r"\bcuales\b", r"\bfechas?\b")
+_ABOUT_AMOUNT = _rx(r"\bhow much\b", r"\bamount\b", r"\bdollars?\b", r"\bmoney\b", r"\bhours?\b",
+                    r"\bcuanto\b", r"\bhoras?\b")
 
 # -------------------------------------------------------------------- durations
 
@@ -148,6 +153,7 @@ class ReplyInterpretation:
     pending_intent: str = ""
     intents: str = ""
     consent: str = "unclear"
+    question_topic: str = ""
     target_hours: str = ""
     recap_language: str = ""
     wants_spanish: str = "no"
@@ -210,14 +216,33 @@ def detect_intents(text: str) -> list[str]:
 
 
 def detect_consent(text: str) -> str:
-    """``'yes'`` (affirmative, no negation), ``'no'`` (any negation) or ``'unclear'``."""
+    """
+    ``'yes'`` (affirmative, no negation), ``'no'`` (any negation, or a bare
+    "wait"), ``'question'`` (the caller asks something instead of answering,
+    e.g. a barge-in "Wait, which days?", with or without the "?") or ``'unclear'``.
+    """
     t = fold(text)
-    negated = bool(_NEGATE.search(t)) or (bool(_WAIT.search(t)) and "?" not in t)
-    if negated:
+    if _NEGATE.search(t):
         return "no"
     if _AFFIRM.search(t):
         return "yes"
+    if _QUESTION.search(t):
+        return "question"
+    if _WAIT.search(t):
+        return "no"
     return "unclear"
+
+
+def detect_question_topic(text: str) -> str:
+    """For a question: ``'days'``, ``'amount'`` or ``'other'``; ``''`` if it isn't one."""
+    t = fold(text)
+    if not _QUESTION.search(t):
+        return ""
+    if _ABOUT_DAYS.search(t):
+        return "days"
+    if _ABOUT_AMOUNT.search(t):
+        return "amount"
+    return "other"
 
 
 def parse_target_hours(text: str) -> float:
@@ -282,6 +307,7 @@ def interpret_reply(text: str, expecting: str = "") -> ReplyInterpretation:
         pending_intent=intents[1] if len(intents) > 1 else "",
         intents=",".join(intents),
         consent=detect_consent(text),
+        question_topic=detect_question_topic(text),
         target_hours=str(target) if target else "",
         recap_language=detect_recap_language(text),
         wants_spanish=_yes_no(spanish_request or is_mostly_spanish(text)),

@@ -99,10 +99,24 @@ _NEGATE = _rx(
     r"\btodavia no\b", r"\bnot yet\b", r"\blet me think\b", r"\bnever ?mind\b")
 _WAIT = re.compile(r"\bwait\b|\bhang on\b|\bespere\b")
 # A reply that only acknowledges ("Okay.", "Great, got it.") and asks for nothing.
-_ACK_WORD = (r"(?:ok(?:ay)?|alright|all right|great|good|sure|yeah|yes|yep|yup|got it|cool|"
-             r"perfect|fine|right|i see|sounds good|excellent|wonderful|awesome|mm+|uh huh|"
-             r"vale|bueno|claro|perfecto)")
-_ACK_ONLY = re.compile(r"^(?:\s*" + _ACK_WORD + r"[\s,.!]*)+$")
+# Checked word by word against fixed sets, so no regex can backtrack on long input.
+_ACK_PHRASES = ("all right", "got it", "i see", "sounds good", "uh huh")
+_ACK_WORDS = frozenset({
+    "ok", "okay", "alright", "great", "good", "sure", "yeah", "yes", "yep", "yup", "cool",
+    "perfect", "fine", "right", "excellent", "wonderful", "awesome", "vale", "bueno",
+    "claro", "perfecto"})
+_ACK_MAX_CHARS = 120
+
+
+def is_acknowledgment(t: str) -> bool:
+    """True when folded text ``t`` is only acknowledgment words ("okay, great")."""
+    if not t or len(t) > _ACK_MAX_CHARS:
+        return False
+    for phrase in _ACK_PHRASES:
+        t = t.replace(phrase, " ok ")
+    words = [w for w in re.split(r"[\s,.!]+", t) if w]
+    return bool(words) and all(
+        w in _ACK_WORDS or (len(w) >= 2 and set(w) == {"m"}) for w in words)
 # What a question at the consent step is about, answered from values already read.
 _ABOUT_DAYS = _rx(r"\bdays?\b", r"\bdates?\b", r"\bwhen\b", r"\bmonday|tuesday|wednesday|thursday|friday|saturday|sunday\b",
                   r"\bwhich (?:shifts?|ones?)\b", r"\bdias?\b", r"\bcuales\b", r"\bfechas?\b")
@@ -303,7 +317,7 @@ def interpret_reply(text: str, expecting: str = "") -> ReplyInterpretation:
         if expecting == "pto_target" or unit != "h":
             intents = ["pto"]
     if t and not intents:
-        intent = "ack" if _ACK_ONLY.match(t) else "other"
+        intent = "ack" if is_acknowledgment(t) else "other"
     else:
         intent = intents[0] if intents else "none"
     spanish_request = bool(_SPANISH_REQUEST.search(t)) and intent != "recap"

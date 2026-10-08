@@ -151,6 +151,12 @@ class TestVarianceRows:
         out = interp(text)
         assert (out["intent"], out["intents"]) == ("ack", "")
 
+    def test_long_or_odd_input_is_not_ack(self):
+        assert r.is_acknowledgment("m" * 5000 + "x") is False
+        assert r.is_acknowledgment("okay " * 100) is False
+        assert r.is_acknowledgment("") is False
+        assert r.is_acknowledgment(" ,. ") is False
+
     def test_acknowledgment_keeps_consent_yes(self):
         assert interp("Okay.", "consent")["consent"] == "yes"
 

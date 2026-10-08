@@ -851,7 +851,8 @@ class CvsHrDatabase:
                        short_description: str = "", description: str = "",
                        related_records: Any = None, state: str = "new",
                        resolved_by: str = "", assignment_group: str = "",
-                       leave_discussed: str = "no", language: str = "en") -> dict:
+                       leave_discussed: str = "no", language: str = "en",
+                       pto_discussed: str = "no", pto_target_hours: str = "") -> dict:
         """
         Open an HR case. The single unverified write allowed (H4) is
         ``hr_service="Identity verification"`` with no ``subject_person``;
@@ -884,7 +885,8 @@ class CvsHrDatabase:
         resolved = state in _CLOSED_STATES
         now = _now()
         lang = "es" if (language or "").strip().lower().startswith("es") else "en"
-        facts = self.call_facts(vid, subject, coerce_bool(leave_discussed))
+        facts = self.call_facts(vid, subject, coerce_bool(leave_discussed),
+                                coerce_bool(pto_discussed), pto_target_hours)
         with self._conn() as conn:
             seq = self._next_seq(conn, "case_seq")
             number = f"HR-{self.calendar().as_of.year}-{seq:04d}"
@@ -905,11 +907,16 @@ class CvsHrDatabase:
         return result
 
     def call_facts(self, verification_id: Optional[str], colleague_id: str,
-                   leave_discussed: bool) -> dict:
+                   leave_discussed: bool, pto_discussed: bool = False,
+                   pto_target_hours: str = "") -> dict:
         """
         What happened in this call's sandbox, for the SMS and case text: the
         latest applied correction (with its pay date), and whether the PTO
         balance and projection were read (from this sandbox's audit rows).
+
+        The balance and projection usually come with the profile at
+        verification, so no Workday rows exist; ``pto_discussed`` and
+        ``pto_target_hours`` from the agent fill them in that case.
         """
         facts: dict = {"correction": None, "balance": None, "projection": None,
                        "leave": bool(leave_discussed and verification_id)}
@@ -928,6 +935,11 @@ class CvsHrDatabase:
                 facts["balance"] = e["result"]
             elif e["tool"] == "project_time_off":
                 facts["projection"] = e["result"]
+        if pto_discussed and facts["balance"] is None:
+            facts["balance"] = self.get_time_off_balance(verification_id, colleague_id)
+        if pto_discussed and facts["projection"] is None and str(pto_target_hours or "").strip():
+            p = self.project_time_off(verification_id, colleague_id, pto_target_hours)
+            facts["projection"] = None if "error" in p else p
         return facts
 
     def _visible_case(self, verification_id: str, colleague_id: str, number: str):

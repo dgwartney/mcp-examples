@@ -582,6 +582,41 @@ class TestSmsBody:
         assert len(case["sms_body"]) <= 320 and case["description"] == "given"
 
     @pytest.mark.asyncio
+    async def test_pto_from_profile_without_workday_reads(self, systems):
+        # Since the profile loads at verification, no Workday rows exist; the
+        # agent's pto_discussed / pto_target_hours fill the PTO lines.
+        vid, cid = await self._golden(systems, pto=False, projection=False)
+        case = await systems.call("servicenow_hrsd", "create_hr_case", subject_person=DANIEL,
+                                  hr_service="Colleague Service call", state="resolved",
+                                  leave_discussed="yes", pto_discussed="yes", pto_target_hours="80",
+                                  verification_id=vid)
+        assert case["sms_body"] == (
+            "CVS Health Colleague Service — case HR-2026-0917. "
+            "Timecard corrected: 1.5 h, $41.63 on your Friday, October 16th paycheck. "
+            "PTO balance: 62.5 h (7.8 days). ~80 h by mid-November. "
+            "Parental leave: up to 4 weeks at 100% base pay (Leave of Absence Guide).")
+        assert not any(e["tool"] in ("get_time_off_balance", "project_time_off")
+                       for e in systems.db.list_audit_events("workday_hcm", vid))
+
+    @pytest.mark.asyncio
+    async def test_pto_discussed_without_target_and_bad_target(self, systems):
+        vid, _ = await self._golden(systems, pto=False, projection=False, correct=False)
+        case = await systems.call("servicenow_hrsd", "create_hr_case", hr_service="General inquiry",
+                                  pto_discussed="yes", verification_id=vid)
+        assert case["sms_body"] == ("CVS Health Colleague Service — case HR-2026-0917. "
+                                    "PTO balance: 62.5 h (7.8 days).")
+        case = await systems.call("servicenow_hrsd", "create_hr_case", hr_service="General inquiry",
+                                  pto_discussed="yes", pto_target_hours="lots", verification_id=vid)
+        assert case["sms_body"].endswith("PTO balance: 62.5 h (7.8 days).")
+
+    @pytest.mark.asyncio
+    async def test_pto_target_without_pto_discussed_is_ignored(self, systems):
+        vid, _ = await self._golden(systems, pto=False, projection=False, correct=False)
+        case = await systems.call("servicenow_hrsd", "create_hr_case", hr_service="General inquiry",
+                                  pto_target_hours="80", verification_id=vid)
+        assert case["sms_body"] == "CVS Health Colleague Service — case HR-2026-0917."
+
+    @pytest.mark.asyncio
     async def test_only_what_happened(self, systems):
         vid, _ = await self._golden(systems, pto=False, projection=False, correct=False)
         case = await systems.call("servicenow_hrsd", "create_hr_case", hr_service="General inquiry",

@@ -55,6 +55,8 @@ class ServicenowHrsdMCPServer(AuthenticatedMCPServer):
             verification_id: str = "",
             leave_discussed: str = "no",
             language: str = "en",
+            pto_discussed: str = "no",
+            pto_target_hours: str = "",
         ) -> dict:
             """
             Returns:
@@ -63,19 +65,22 @@ class ServicenowHrsdMCPServer(AuthenticatedMCPServer):
                 assignment_group, resolved_by, opened_at, resolved_at, verified,
                 sms_body (recap text for the SMS, in ``language``: en|es, built
                 from what happened in this call; leave line only when
-                leave_discussed="yes"), language.
+                leave_discussed="yes"; PTO balance and projection lines when
+                pto_discussed="yes", the projection for pto_target_hours), language.
             """
             args = dict(subject_person=subject_person, hr_service=hr_service,
                         contact_type=contact_type, short_description=short_description,
                         description=description, related_records=related_records, state=state,
                         resolved_by=resolved_by, assignment_group=assignment_group,
                         verification_id=verification_id, leave_discussed=leave_discussed,
-                        language=language)
+                        language=language, pto_discussed=pto_discussed,
+                        pto_target_hours=pto_target_hours)
             return hr_db.audited(SYSTEM, "create_hr_case", args,
                                  lambda: hr_db.create_hr_case(
                                      verification_id, subject_person, hr_service, contact_type,
                                      short_description, description, related_records, state,
-                                     resolved_by, assignment_group, leave_discussed, language))
+                                     resolved_by, assignment_group, leave_discussed, language,
+                                     pto_discussed, pto_target_hours))
 
         @self.mcp.tool(description="Add a work note to one of the verified colleague's HR cases.")
         def add_work_note(number: str, note: str, verification_id: str = "") -> dict:

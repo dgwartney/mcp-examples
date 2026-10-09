@@ -210,3 +210,39 @@ class TestLifespan:
             srv.close.assert_not_called()
 
         srv.close.assert_called_once()
+
+
+class TestServiceSelection:
+    """MCP_SERVICES / MCP_SERVICES_EXCLUDE pick which services one app mounts."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_env(self, monkeypatch):
+        monkeypatch.delenv("MCP_SERVICES", raising=False)
+        monkeypatch.delenv("MCP_SERVICES_EXCLUDE", raising=False)
+        monkeypatch.setattr(
+            combined, "SERVER_REGISTRY", [("one", FakeServer), ("two", FakeServer)]
+        )
+
+    def _prefixes(self):
+        routes, _, _ = combined._build()
+        return [r.path for r in routes]
+
+    def test_no_env_mounts_everything(self):
+        assert self._prefixes() == ["/one", "/two"]
+
+    def test_include_mounts_only_named(self, monkeypatch):
+        monkeypatch.setenv("MCP_SERVICES", "two")
+        assert self._prefixes() == ["/two"]
+
+    def test_exclude_drops_named(self, monkeypatch):
+        monkeypatch.setenv("MCP_SERVICES_EXCLUDE", " one ,")
+        assert self._prefixes() == ["/two"]
+
+    def test_rest_app_follows_its_path_prefix(self, monkeypatch):
+        monkeypatch.setattr(
+            combined, "REST_REGISTRY", [("/one/api", Starlette), ("/two/api", Starlette)]
+        )
+        monkeypatch.setenv("MCP_SERVICES", "one")
+        app = combined.build_app()
+        paths = [r.path for r in app.routes]
+        assert paths == ["/one/api", "/one"]

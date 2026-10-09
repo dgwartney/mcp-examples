@@ -2,6 +2,7 @@
 Combined MCP server — mounts all registered servers at separate URL paths.
 
 To add a new server: append one entry to SERVER_REGISTRY.
+To mount a subset, set MCP_SERVICES or MCP_SERVICES_EXCLUDE (see _selected).
 
 Endpoints (when running on port 8000):
     /greet/mcp      → Greet server
@@ -34,6 +35,7 @@ Deploy to Fly.io:
 """
 
 import argparse
+import os
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import uvicorn
@@ -83,9 +85,30 @@ REST_REGISTRY: list[tuple[str, object]] = [
 ]
 
 
+def _env_set(var: str) -> set[str]:
+    return {n.strip() for n in os.environ.get(var, "").split(",") if n.strip()}
+
+
+def _selected(name: str) -> bool:
+    """Whether a service is mounted in this deployment.
+
+    ``MCP_SERVICES`` (comma list) mounts only the named services;
+    ``MCP_SERVICES_EXCLUDE`` drops the named ones. Neither set mounts
+    everything. A REST app's name is the first segment of its mount path
+    (``/acme/api`` -> ``acme``), so one name covers a server and its API.
+    This lets several Fly apps run the same image with different services.
+    """
+    include = _env_set("MCP_SERVICES")
+    if include and name not in include:
+        return False
+    return name not in _env_set("MCP_SERVICES_EXCLUDE")
+
+
 def _build() -> tuple[list, list, list]:
     routes, sub_apps, servers = [], [], []
     for prefix, ServerClass in SERVER_REGISTRY:
+        if not _selected(prefix):
+            continue
         srv = ServerClass()
         sub_app = srv.mcp.http_app(
             path="/mcp",
@@ -106,7 +129,11 @@ def build_app() -> Starlette:
     at import time — see the module-level ``__getattr__`` below.
     """
     routes, sub_apps, servers = _build()
-    rest_routes = [Mount(path, app=factory()) for path, factory in REST_REGISTRY]
+    rest_routes = [
+        Mount(path, app=factory())
+        for path, factory in REST_REGISTRY
+        if _selected(path.strip("/").split("/")[0])
+    ]
     routes = rest_routes + routes
 
     @asynccontextmanager

@@ -89,6 +89,22 @@ class TestAcmeDatabase:
     def test_create_return_rejects_missing_order(self, acme_db):
         assert acme_db.create_return("ACM-0000", "x", today=TODAY)["error"] == "order_not_found"
 
+    def test_list_returns_newest_first(self, acme_db):
+        acme_db.create_return("ACM-1004", "Too small", today=TODAY)
+        acme_db.create_return("ACM-1004", "Dead pixels", today=TODAY)
+        got = acme_db.list_returns("acm-1004")
+        assert [r["return_id"] for r in got] == ["RET-2", "RET-1"]
+        assert got[0]["reason"] == "Dead pixels"
+
+    def test_list_returns_limit_is_clamped(self, acme_db):
+        for i in range(3):
+            acme_db.create_return("ACM-1004", f"r{i}", today=TODAY)
+        assert [r["reason"] for r in acme_db.list_returns("ACM-1004", limit=2)] == ["r2", "r1"]
+        assert len(acme_db.list_returns("ACM-1004", limit=0)) == 1
+
+    def test_list_returns_empty_for_order_without_returns(self, acme_db):
+        assert acme_db.list_returns("ACM-1001") == []
+
     def test_ticket_round_trip(self, acme_db):
         t = acme_db.create_ticket("a@example.com", "Help", "Box damaged", "urgent")
         assert t["ticket_id"] == "TKT-1"
@@ -174,10 +190,10 @@ class TestAcmeMCPServer:
                              acme_db_path=str(tmp_path / "acme.db"))
 
     @pytest.mark.asyncio
-    async def test_lists_six_tools(self, server):
+    async def test_lists_seven_tools(self, server):
         async with Client(server.mcp) as client:
             names = {t.name for t in await client.list_tools()}
-        assert names == {"get_order", "list_orders", "create_return",
+        assert names == {"get_order", "list_orders", "create_return", "list_returns",
                          "get_return", "create_ticket", "get_ticket"}
 
     @pytest.mark.asyncio
@@ -205,3 +221,19 @@ class TestAcmeMCPServer:
                                                          "subject": "s", "description": "d"})
             got = await client.call_tool("get_ticket", {"ticket_id": t.data["ticket_id"]})
         assert got.data["status"] == "open"
+
+    @pytest.mark.asyncio
+    async def test_list_returns_after_create(self, server):
+        async with Client(server.mcp) as client:
+            empty = await client.call_tool("list_returns", {"order_id": "ACM-1004"})
+            await client.call_tool("create_return", {"order_id": "ACM-1004",
+                                                     "reason": "Wrong item"})
+            got = await client.call_tool("list_returns", {"order_id": "ACM-1004"})
+        assert empty.structured_content == {"result": []}
+        assert got.structured_content["result"][0]["reason"] == "Wrong item"
+
+    @pytest.mark.asyncio
+    async def test_list_returns_missing_order_raises(self, server):
+        async with Client(server.mcp) as client:
+            with pytest.raises(ToolError, match="No order found"):
+                await client.call_tool("list_returns", {"order_id": "ACM-9999"})

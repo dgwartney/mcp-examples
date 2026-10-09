@@ -330,9 +330,34 @@ class AcmeDatabaseManager:
             rows = self._rows_to_dicts(cursor)
         finally:
             conn.close()
-        if not rows:
-            return None
-        r = rows[0]
+        return self._row_to_return_dict(rows[0]) if rows else None
+
+    def list_returns(self, order_id: str, limit: int = 5) -> list[dict]:
+        """
+        List the returns opened for one order (case-insensitive), newest first.
+
+        Args:
+            order_id: Order ID such as ``ACM-1004``.
+            limit: Most returns to list, clamped to 1..20.
+
+        Returns:
+            A (possibly empty) list of return dicts.
+        """
+        limit = max(1, min(int(limit), 20))
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute(
+                "SELECT * FROM returns WHERE OrderId = ? COLLATE NOCASE "
+                "ORDER BY ReturnId DESC LIMIT ?",
+                (order_id.strip(), limit),
+            )
+            return [self._row_to_return_dict(r) for r in self._rows_to_dicts(cursor)]
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _row_to_return_dict(r: dict) -> dict:
+        """Map a ``returns`` row to the public return dict."""
         return {"return_id": f"RET-{r['ReturnId']}", "order_id": r["OrderId"],
                 "reason": r["Reason"], "status": r["Status"], "created_at": r["CreatedAt"]}
 

@@ -12,7 +12,7 @@ Author:
 
 import json
 import sqlite3
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 
@@ -24,6 +24,8 @@ _ORDER_COLUMNS = [
 
 # Fixed seed data. Dates are absolute so lab "You should see" output is
 # stable; return eligibility is computed against DeliveredDate + window.
+# Exception: orders in _ROLLING_DELIVERED_DAYS_AGO get their dates computed
+# relative to "today" at read time (see _apply_rolling_dates).
 _SEED_ORDERS = [
     {
         "OrderId": "ACM-1001", "CustomerName": "Maria Lopez",
@@ -81,6 +83,11 @@ _SEED_ORDERS = [
         "Total": 34.99, "ReturnWindowDays": 30,
     },
 ]
+
+# Delivered orders whose dates roll forward with the calendar, so the returns
+# labs always have one order inside its return window. Maps order ID to how
+# many days ago it was delivered; the order was placed 5 days before that.
+_ROLLING_DELIVERED_DAYS_AGO = {"ACM-1004": 10}
 
 # Orders with special behavior for the reliability labs (see acme_api.py).
 SIMULATED_SLOW_ORDER = "ACM-1099"
@@ -167,6 +174,29 @@ class AcmeDatabaseManager:
         return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
     @staticmethod
+    def _apply_rolling_dates(row: dict, today: date) -> dict:
+        """
+        Return the row with rolling-order dates computed relative to today.
+
+        Args:
+            row: Stored order row.
+            today: The date to compute against.
+
+        Returns:
+            The row unchanged, or a copy with OrderDate, EstimatedDelivery and
+            DeliveredDate rewritten for orders in _ROLLING_DELIVERED_DAYS_AGO.
+        """
+        days_ago = _ROLLING_DELIVERED_DAYS_AGO.get(row["OrderId"])
+        if days_ago is None:
+            return row
+        delivered = (today - timedelta(days=days_ago)).isoformat()
+        rolled = dict(row)
+        rolled["OrderDate"] = (today - timedelta(days=days_ago + 5)).isoformat()
+        rolled["EstimatedDelivery"] = delivered
+        rolled["DeliveredDate"] = delivered
+        return rolled
+
+    @staticmethod
     def _return_eligibility(row: dict, today: date) -> tuple[bool, str]:
         """Compute whether an order can be returned today, and why (not)."""
         if row["Status"] != "delivered" or not row["DeliveredDate"]:
@@ -179,6 +209,7 @@ class AcmeDatabaseManager:
     def _row_to_order_dict(self, row: dict, today: Optional[date] = None) -> dict:
         """Convert a stored order row to the public API shape."""
         today = today or datetime.now(timezone.utc).date()
+        row = self._apply_rolling_dates(row, today)
         eligible, deadline = self._return_eligibility(row, today)
         return {
             "order_id": row["OrderId"],

@@ -54,7 +54,16 @@ class TestAcmeDatabase:
     def test_delivered_inside_window_is_eligible(self, acme_db):
         order = acme_db.get_order("ACM-1004", today=TODAY)
         assert order["return_eligible"] is True
-        assert order["return_deadline"] == "2026-10-25"
+        assert order["delivered_date"] == "2026-10-02"
+        assert order["return_deadline"] == "2026-11-01"
+
+    def test_rolling_order_stays_eligible_as_time_passes(self, acme_db):
+        later = date(2027, 6, 1)
+        order = acme_db.get_order("ACM-1004", today=later)
+        assert order["return_eligible"] is True
+        assert order["delivered_date"] == "2027-05-22"
+        assert order["order_date"] == "2027-05-17"
+        assert order["estimated_delivery"] == "2027-05-22"
 
     def test_delivered_outside_window_is_not_eligible(self, acme_db):
         order = acme_db.get_order("ACM-1005", today=TODAY)

@@ -277,7 +277,7 @@ Errors use the shape `{"error": "<code>", "message": "<text>"}`.
 | ACM-1001 | maria.lopez@example.com | processing | not yet shipped |
 | ACM-1002 | maria.lopez@example.com | shipped | UPS tracking |
 | ACM-1003 | james.chen@example.com | out_for_delivery | 2 items |
-| ACM-1004 | james.chen@example.com | delivered 2026-09-25 | returnable until 2026-10-25 |
+| ACM-1004 | james.chen@example.com | delivered 10 days ago (dates roll with the calendar) | returnable for 20 more days |
 | ACM-1005 | aisha.patel@example.com | delivered 2026-08-02 | return window closed |
 | ACM-1006 | aisha.patel@example.com | cancelled | — |
 

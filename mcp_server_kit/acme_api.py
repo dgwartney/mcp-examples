@@ -41,20 +41,11 @@ from mcp_server_kit.acme_database import (
     AcmeDatabaseManager,
 )
 from mcp_server_kit.database import DatabaseManager
-from mcp_server_kit.middleware import ApiKeyMiddleware
+from mcp_server_kit.middleware import HealthExemptApiKeyMiddleware
 
 SLOW_RESPONSE_SECONDS = 8.0
 FLAKY_FAILURES_BEFORE_SUCCESS = 2
 FLAKY_RESET_SECONDS = 60.0
-
-
-class _HealthExemptApiKeyMiddleware(ApiKeyMiddleware):
-    """``ApiKeyMiddleware`` that lets ``/health`` through unauthenticated."""
-
-    async def dispatch(self, request: Request, call_next):
-        if request.url.path.endswith("/health"):
-            return await call_next(request)
-        return await super().dispatch(request, call_next)
 
 
 class _FlakyCounter:
@@ -185,7 +176,7 @@ def build_acme_app(
         Route("/tickets", create_ticket, methods=["POST"]),
         Route("/tickets/{ticket_id}", get_ticket, methods=["GET"]),
     ]
-    middleware = [Middleware(_HealthExemptApiKeyMiddleware, db_manager=key_db)]
+    middleware = [Middleware(HealthExemptApiKeyMiddleware, db_manager=key_db)]
     app = Starlette(routes=routes, middleware=middleware)
     app.state.acme_db = acme_db
     return app

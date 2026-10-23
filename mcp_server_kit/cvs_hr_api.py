@@ -29,9 +29,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from mcp_server_kit.acme_api import _HealthExemptApiKeyMiddleware
 from mcp_server_kit.cvs_hr_database import SYSTEMS, open_database
 from mcp_server_kit.database import DatabaseManager
+from mcp_server_kit.middleware import HealthExemptApiKeyMiddleware
 
 
 def _error(status: int, code: str, message: str) -> JSONResponse:
@@ -103,7 +103,7 @@ def build_cvs_hr_app(cvs_hr_db_path: Optional[str] = None,
         Route("/settings", get_settings, methods=["GET"]),
         Route("/settings", post_settings, methods=["POST"]),
     ]
-    middleware = [Middleware(_HealthExemptApiKeyMiddleware, db_manager=key_db)]
+    middleware = [Middleware(HealthExemptApiKeyMiddleware, db_manager=key_db)]
     app = Starlette(routes=routes, middleware=middleware)
     app.state.hr_db = hr_db
     return app

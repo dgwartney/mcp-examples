@@ -65,3 +65,23 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
             )
 
         return await call_next(request)
+
+
+class HealthExemptApiKeyMiddleware(ApiKeyMiddleware):
+    """``ApiKeyMiddleware`` that lets paths ending in ``/health`` through unauthenticated."""
+
+    async def dispatch(self, request: Request, call_next):
+        """
+        Skip the API key check for ``/health`` and validate everything else.
+
+        Args:
+            request (Request): The incoming HTTP request.
+            call_next: Callable to invoke the next middleware or route handler.
+
+        Returns:
+            Response: The next handler's response for health checks, otherwise
+                the parent middleware's response.
+        """
+        if request.url.path.endswith("/health"):
+            return await call_next(request)
+        return await super().dispatch(request, call_next)

@@ -36,6 +36,7 @@ Deploy to Fly.io:
 
 import argparse
 import os
+from collections.abc import Callable, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import uvicorn
@@ -104,9 +105,9 @@ def _selected(name: str) -> bool:
     return name not in _env_set("MCP_SERVICES_EXCLUDE")
 
 
-def _build() -> tuple[list, list, list]:
+def _build(server_registry: Sequence[tuple[str, type]]) -> tuple[list, list, list]:
     routes, sub_apps, servers = [], [], []
-    for prefix, ServerClass in SERVER_REGISTRY:
+    for prefix, ServerClass in server_registry:
         if not _selected(prefix):
             continue
         srv = ServerClass()
@@ -121,17 +122,33 @@ def _build() -> tuple[list, list, list]:
     return routes, sub_apps, servers
 
 
-def build_app() -> Starlette:
-    """Construct the combined Starlette app, mounting every registered server.
+def build_combined_app(
+    server_registry: Sequence[tuple[str, type]],
+    rest_registry: Sequence[tuple[str, Callable[[], Starlette]]] = (),
+) -> Starlette:
+    """Construct a combined Starlette app from the given registries.
 
-    Building the app instantiates every server in ``SERVER_REGISTRY`` (which
-    opens/creates their SQLite databases), so this is done lazily rather than
-    at import time — see the module-level ``__getattr__`` below.
+    REST apps are mounted before MCP servers so a specific path such as
+    ``/acme/api`` wins over the ``/acme`` MCP mount. ``MCP_SERVICES`` and
+    ``MCP_SERVICES_EXCLUDE`` filter both registries (see ``_selected``).
+
+    Building the app instantiates every selected server (which opens/creates
+    their SQLite databases), so callers should do this lazily rather than at
+    import time — see the module-level ``__getattr__`` below.
+
+    Args:
+        server_registry: ``(url_prefix, ServerClass)`` pairs for MCP servers.
+        rest_registry: ``(mount_path, zero-arg app factory)`` pairs for plain
+            REST apps.
+
+    Returns:
+        Starlette: The combined app, with sub-app lifespans composed and
+            servers closed on shutdown.
     """
-    routes, sub_apps, servers = _build()
+    routes, sub_apps, servers = _build(server_registry)
     rest_routes = [
         Mount(path, app=factory())
-        for path, factory in REST_REGISTRY
+        for path, factory in rest_registry
         if _selected(path.strip("/").split("/")[0])
     ]
     routes = rest_routes + routes
@@ -151,6 +168,11 @@ def build_app() -> Starlette:
                 srv.close()
 
     return Starlette(lifespan=_lifespan, routes=routes)
+
+
+def build_app() -> Starlette:
+    """Construct the combined Starlette app, mounting every registered server."""
+    return build_combined_app(SERVER_REGISTRY, REST_REGISTRY)
 
 
 _app_cache: dict[str, Starlette] = {}

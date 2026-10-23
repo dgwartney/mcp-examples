@@ -122,3 +122,23 @@ class TestApiKeyMiddleware:
 
         assert resp.status_code == 200
         mock_db_manager.validate_key.assert_called_once_with("valid-key")
+
+
+def test_health_exempt_middleware_allows_health_without_key():
+    """Paths ending /health skip the key check; everything else still needs one."""
+    from mcp_server_kit.middleware import HealthExemptApiKeyMiddleware
+
+    db_manager = MagicMock(spec=DatabaseManager)
+    db_manager.validate_key.return_value = False
+
+    async def ok(request: Request):
+        return Response("ok", media_type="text/plain")
+
+    app = Starlette(
+        routes=[Route("/x/health", ok), Route("/x/other", ok)],
+        middleware=[Middleware(HealthExemptApiKeyMiddleware, db_manager=db_manager)],
+    )
+    client = TestClient(app)
+
+    assert client.get("/x/health").status_code == 200
+    assert client.get("/x/other").status_code == 401

@@ -54,14 +54,14 @@ class TestBuild:
             "SERVER_REGISTRY",
             [("one", FakeServer), ("two", FakeServer)],
         )
-        routes, sub_apps, servers = combined._build()
+        routes, sub_apps, servers = combined._build(combined.SERVER_REGISTRY)
         assert len(routes) == 2
         assert len(sub_apps) == 2
         assert len(servers) == 2
 
     def test_build_mounts_at_registry_prefix(self, monkeypatch):
         monkeypatch.setattr(combined, "SERVER_REGISTRY", [("foo", FakeServer)])
-        routes, _, _ = combined._build()
+        routes, _, _ = combined._build(combined.SERVER_REGISTRY)
         assert isinstance(routes[0], Mount)
         assert routes[0].path == "/foo"
 
@@ -75,7 +75,7 @@ class TestBuild:
                 instances.append(self)
 
         monkeypatch.setattr(combined, "SERVER_REGISTRY", [("foo", TrackedFakeServer)])
-        combined._build()
+        combined._build(combined.SERVER_REGISTRY)
         srv = instances[0]
         srv.mcp.http_app.assert_called_once_with(
             path="/mcp",
@@ -84,7 +84,7 @@ class TestBuild:
         )
 
     def test_build_real_registry_produces_thirteen_routes(self):
-        routes, sub_apps, servers = combined._build()
+        routes, sub_apps, servers = combined._build(combined.SERVER_REGISTRY)
         assert len(routes) == 13
         assert len(sub_apps) == 13
         assert len(servers) == 13
@@ -182,7 +182,7 @@ class TestLifespan:
         monkeypatch.setattr(
             combined,
             "_build",
-            lambda: (routes, [sub_app_1, sub_app_2], fake_servers),
+            lambda _registry: (routes, [sub_app_1, sub_app_2], fake_servers),
         )
 
         app = combined.build_app()
@@ -203,10 +203,72 @@ class TestLifespan:
         routes = [Mount("/one", app=sub_app)]
         srv = FakeServer()
         srv.close = MagicMock()
-        monkeypatch.setattr(combined, "_build", lambda: (routes, [sub_app], [srv]))
+        monkeypatch.setattr(combined, "_build", lambda _registry: (routes, [sub_app], [srv]))
 
         app = combined.build_app()
         async with app.router.lifespan_context(app):
             srv.close.assert_not_called()
 
         srv.close.assert_called_once()
+
+
+class TestServiceSelection:
+    """MCP_SERVICES / MCP_SERVICES_EXCLUDE pick which services one app mounts."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_env(self, monkeypatch):
+        monkeypatch.delenv("MCP_SERVICES", raising=False)
+        monkeypatch.delenv("MCP_SERVICES_EXCLUDE", raising=False)
+        monkeypatch.setattr(
+            combined, "SERVER_REGISTRY", [("one", FakeServer), ("two", FakeServer)]
+        )
+
+    def _prefixes(self):
+        routes, _, _ = combined._build(combined.SERVER_REGISTRY)
+        return [r.path for r in routes]
+
+    def test_no_env_mounts_everything(self):
+        assert self._prefixes() == ["/one", "/two"]
+
+    def test_include_mounts_only_named(self, monkeypatch):
+        monkeypatch.setenv("MCP_SERVICES", "two")
+        assert self._prefixes() == ["/two"]
+
+    def test_exclude_drops_named(self, monkeypatch):
+        monkeypatch.setenv("MCP_SERVICES_EXCLUDE", " one ,")
+        assert self._prefixes() == ["/two"]
+
+    def test_rest_app_follows_its_path_prefix(self, monkeypatch):
+        monkeypatch.setattr(
+            combined, "REST_REGISTRY", [("/one/api", Starlette), ("/two/api", Starlette)]
+        )
+        monkeypatch.setenv("MCP_SERVICES", "one")
+        app = combined.build_app()
+        paths = [r.path for r in app.routes]
+        assert paths == ["/one/api", "/one"]
+
+
+class TestBuildCombinedApp:
+
+    @pytest.fixture(autouse=True)
+    def _clean_env(self, monkeypatch):
+        monkeypatch.delenv("MCP_SERVICES", raising=False)
+        monkeypatch.delenv("MCP_SERVICES_EXCLUDE", raising=False)
+
+    def test_build_combined_app_mounts_only_given_registry(self):
+        app = combined.build_combined_app([("greet", FakeServer)])
+        assert [r.path for r in app.routes if isinstance(r, Mount)] == ["/greet"]
+
+    def test_build_combined_app_respects_services_exclude(self, monkeypatch):
+        monkeypatch.setenv("MCP_SERVICES_EXCLUDE", "greet")
+        app = combined.build_combined_app(
+            [("greet", FakeServer), ("contacts", FakeServer)]
+        )
+        assert [r.path for r in app.routes if isinstance(r, Mount)] == ["/contacts"]
+
+    def test_build_combined_app_mounts_rest_before_mcp(self):
+        app = combined.build_combined_app(
+            [("greet", FakeServer)],
+            [("/greet/api", lambda: Starlette())],
+        )
+        assert [r.path for r in app.routes] == ["/greet/api", "/greet"]

@@ -132,6 +132,32 @@ class AcmeMCPServer(AuthenticatedMCPServer):
 
         @self.mcp.tool(
             description=(
+                "List the returns already opened for an Acme order "
+                "(e.g. ACM-1004), newest first, at most limit (default 5). "
+                "Empty list if none."
+            )
+        )
+        def list_returns(order_id: str, limit: int = 5) -> list[dict]:
+            """
+            List the returns opened for one order, newest first.
+
+            Args:
+                order_id: Order ID such as ``ACM-1004``.
+                limit: Most returns to list (1-20, default 5).
+
+            Returns:
+                List of return dicts (possibly empty): return_id, order_id,
+                reason, status, created_at.
+
+            Raises:
+                ToolError: If no order matches order_id.
+            """
+            if acme_db.get_order(order_id) is None:
+                raise ToolError(f"No order found with ID '{order_id}'")
+            return acme_db.list_returns(order_id, limit)
+
+        @self.mcp.tool(
+            description=(
                 "Open an Acme support ticket for a human agent to follow up. "
                 "priority is one of low, normal, high, urgent."
             )

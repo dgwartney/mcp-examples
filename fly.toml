@@ -8,7 +8,8 @@ primary_region = 'ord'
   CONTACTS_DB_PATH = '/data/contacts.db'
   PTO_DB_PATH = '/data/pto.db'
   ONBOARDING_DB_PATH = '/data/onboarding.db'
-  ACME_DB_PATH = '/data/acme.db'
+  # Acme (the learning guide's labs) runs in its own app: see fly.acme.toml.
+  MCP_SERVICES_EXCLUDE = 'acme'
   CVS_HR_DB_PATH = '/data/cvs_hr.db'
   # CVS HR demo (Savvy): optional, set per demo, never committed —
   #   fly secrets set CVS_HR_DEMO_SMS_TO=<E.164 handset>   (sms_to for case texts)
@@ -25,9 +26,9 @@ primary_region = 'ord'
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = 'off'
+  auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
 
 [[vm]]
   size = 'shared-cpu-1x'

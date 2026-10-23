@@ -135,6 +135,27 @@ One API key (stored in the shared `/data/api_keys.db` volume) authenticates to a
 
 To add a new server to the deployment, append one entry to `SERVER_REGISTRY` in `mcp_server_kit/combined.py` and run `fly deploy`. See [docs/servers.md](../servers.md#combined-server) for details.
 
+### Running services as separate apps
+
+One image can back several Fly apps. Each app picks its services with an env var:
+
+- `MCP_SERVICES = 'acme'` mounts only the named services (comma list).
+- `MCP_SERVICES_EXCLUDE = 'acme'` mounts everything except the named ones.
+
+A REST app's name is the first segment of its path, so `acme` covers both `/acme/mcp` and `/acme/api`. This repo runs two apps:
+
+| App | Config | Services | Volume |
+|---|---|---|---|
+| `mcp-server-kit` | `fly.toml` | everything except `acme` | `mcp_data` |
+| `mcp-server-kit-acme` | `fly.acme.toml` | `acme` (the Artemis learning-guide labs) | `acme_data` |
+
+Each app has its own volume, so it also has its own API key database. Both stop when idle and wake on the next request.
+
+```bash
+fly deploy                       # mcp-server-kit
+fly deploy -c fly.acme.toml      # mcp-server-kit-acme
+```
+
 ### Verify all servers are running
 
 After deploying, confirm each server is live:
@@ -202,11 +223,14 @@ fly logs --no-tail
 The free tier uses `auto_stop_machines = 'stop'` in `fly.toml`, which means Fly.io automatically stops the machine after a period of inactivity to conserve your free allowance. The machine starts again automatically on the next inbound request (cold start takes ~5 seconds).
 
 ```bash
-# Manually stop the machine (databases on the volume are preserved)
+# Manually stop the machine; it wakes on the next request (auto_start)
+fly machine stop
+
+# Remove the machine entirely (the volume and its databases are kept)
 fly scale count 0
 
-# Manually start a stopped machine
-fly machine start
+# Recreate it after `fly scale count 0` (re-attaches the volume)
+fly scale count 1 --region ord
 
 # Check current machine state
 fly status

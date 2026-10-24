@@ -5,6 +5,7 @@ Author:
     David Gwartney <david.gwartney@gmail.com>
 """
 
+import asyncio
 import os
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -180,3 +181,87 @@ class TestAuthenticatedMCPServer:
                 mock_run.assert_called_once_with(
                     transport='streamable-http', host='0.0.0.0', port=9000
                 )
+
+
+class StubMCPServerAllPrimitives(AuthenticatedMCPServer):
+    """Subclass that registers a tool, a resource, a resource template and a prompt."""
+
+    def __init__(self, *args, **kwargs):
+        self.hook_calls = []
+        super().__init__(*args, **kwargs)
+
+    def _register_tools(self):
+        self.hook_calls.append("tools")
+
+        @self.mcp.tool
+        def ping() -> str:
+            return "pong"
+
+    def _register_resources(self):
+        self.hook_calls.append("resources")
+
+        @self.mcp.resource("stub://info")
+        def info() -> str:
+            return "stub info"
+
+        @self.mcp.resource("stub://echo/{text}")
+        def echo(text: str) -> str:
+            return text
+
+    def _register_prompts(self):
+        self.hook_calls.append("prompts")
+
+        @self.mcp.prompt
+        def ask(topic: str) -> str:
+            return f"Tell me about {topic}."
+
+
+def _list_primitives(mcp):
+    """Return (tools, resources, templates, prompts) names via the public client."""
+    from fastmcp import Client
+
+    async def _list():
+        async with Client(mcp) as client:
+            return (
+                {t.name for t in await client.list_tools()},
+                {str(r.uri) for r in await client.list_resources()},
+                {t.uriTemplate for t in await client.list_resource_templates()},
+                {p.name for p in await client.list_prompts()},
+            )
+
+    return asyncio.run(_list())
+
+
+class TestResourceAndPromptHooks:
+    """The optional _register_resources() / _register_prompts() hooks."""
+
+    def test_hooks_default_to_registering_nothing(self, tmp_path):
+        server = StubMCPServer(db_path=str(tmp_path / "keys.db"))
+        _tools, resources, templates, prompts = _list_primitives(server.mcp)
+        assert (resources, templates, prompts) == (set(), set(), set())
+
+    def test_hooks_run_once_in_order(self, tmp_path):
+        server = StubMCPServerAllPrimitives(db_path=str(tmp_path / "keys.db"))
+        assert server.hook_calls == ["tools", "resources", "prompts"]
+
+    def test_all_primitives_are_served(self, tmp_path):
+        server = StubMCPServerAllPrimitives(db_path=str(tmp_path / "keys.db"))
+        tools, resources, templates, prompts = _list_primitives(server.mcp)
+        assert tools == {"ping"}
+        assert resources == {"stub://info"}
+        assert templates == {"stub://echo/{text}"}
+        assert prompts == {"ask"}
+
+    def test_resource_template_and_prompt_render(self, tmp_path):
+        from fastmcp import Client
+
+        server = StubMCPServerAllPrimitives(db_path=str(tmp_path / "keys.db"))
+
+        async def _check():
+            async with Client(server.mcp) as client:
+                echoed = await client.read_resource("stub://echo/hello")
+                assert echoed[0].text == "hello"
+                prompt = await client.get_prompt("ask", {"topic": "MCP"})
+                assert prompt.messages[0].content.text == "Tell me about MCP."
+
+        asyncio.run(_check())

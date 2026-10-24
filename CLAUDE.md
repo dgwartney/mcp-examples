@@ -36,7 +36,7 @@ The project is organized as a `mcp_server_kit` Python package:
 
 - **mcp_server_kit/database.py** — `DatabaseManager` class for SQLite-backed API key storage and validation.
 - **mcp_server_kit/middleware.py** — `ApiKeyMiddleware` class that checks for an `X-API-Key` header on incoming HTTP requests.
-- **mcp_server_kit/base.py** — `AuthenticatedMCPServer` abstract base class with API key auth infrastructure (database, middleware). Subclass and implement `_register_tools()` to create new servers.
+- **mcp_server_kit/base.py** — `AuthenticatedMCPServer` abstract base class with API key auth infrastructure (database, middleware). Subclass and implement `_register_tools()` to create new servers; optionally override `_register_resources()` and `_register_prompts()` to serve resources, resource templates and prompts.
 - **mcp_server_kit/server.py** — `GreetMCPServer` derived class demonstrating tool registration. Exposes module-level `server` and `mcp` instances.
 - **mcp_server_kit/contact_database.py** — `ContactDatabaseManager` class for SQLite-backed contact storage, auto-seeded with mock CRM data.
 - **mcp_server_kit/contacts.py** — `ContactMCPServer` derived class exposing contact search and authentication tools.

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `AuthenticatedMCPServer` has optional `_register_resources()` and `_register_prompts()`
+  hooks, so servers built on the kit can serve all three MCP primitives (tools, resources
+  and resource templates, prompts). Both register nothing by default, so existing servers
+  are unchanged.
+- `mcp_server_kit/_template.py`, `mcp-server-kit add-server` and `mcp-server-kit new`
+  generate an example resource, resource template and prompt alongside the example tool.
+
+### Fixed
+
+- `mcp-server-kit add-server` again replaces the template's "Copy this file…" intro in the
+  generated module, and renames only `TemplateMCPServer`, so MCP fields such as
+  `uriTemplate` in the generated tests are left intact.
+
 ## [0.1.0] - 2026-02-11
 
 ### Added

@@ -27,7 +27,9 @@ the step that actually exposes it to Artemis/Kore AI, so don't skip it.
    uv run python scripts/new_server.py <Name>
    ```
 2. **Implement your tools** in the new class's `_register_tools()` method (see
-   [Adding New Tools](#adding-new-tools) below for the pattern).
+   [Adding New Tools](#adding-new-tools) below for the pattern). Put resources in
+   `_register_resources()` and prompts in `_register_prompts()`, or delete those methods
+   if you don't need them (see [Adding Resources and Prompts](#adding-resources-and-prompts)).
 3. **Register the server in `mcp_server_kit/combined.py`** — import the class and append
    `("<name>", <Name>MCPServer)` to `SERVER_REGISTRY`. **This is the step most often
    forgotten when done by hand** — without it, the server never gets mounted or exposed
@@ -182,12 +184,39 @@ curl -s -X POST http://localhost:8000/mcp \
   }'
 ```
 
-## Adding Resources
+## Adding Resources and Prompts
 
-FastMCP also supports resources (read-only data sources):
+MCP servers offer three primitives: **tools** (actions the model calls), **resources**
+(read-only data the client fetches by URI) and **prompts** (reusable message templates
+the client fills in). `AuthenticatedMCPServer` has a hook for each. `_register_tools()` is
+required. `_register_resources()` and `_register_prompts()` are optional and register
+nothing by default. The base class calls them in that order during `__init__`.
 
 ```python
-@self.mcp.resource("config://settings")
-def get_settings() -> str:
-    return json.dumps({"version": "1.0", "env": "production"})
+import json
+
+
+class MyServer(AuthenticatedMCPServer):
+    def _register_tools(self) -> None:
+        ...
+
+    def _register_resources(self) -> None:
+        # A fixed resource: one URI, listed by resources/list.
+        @self.mcp.resource("config://settings", description="Server settings")
+        def get_settings() -> str:
+            return json.dumps({"version": "1.0", "env": "production"})
+
+        # A resource template: {placeholders} in the URI become function arguments.
+        # Listed by resources/templates/list and read as, e.g., users://42/profile.
+        @self.mcp.resource("users://{user_id}/profile", description="A user's profile")
+        def user_profile(user_id: int) -> str:
+            return json.dumps({"id": user_id, "name": f"User {user_id}"})
+
+    def _register_prompts(self) -> None:
+        @self.mcp.prompt(description="Ask a model to summarize a user's account")
+        def summarize_user(user_id: int) -> str:
+            return f"Read users://{user_id}/profile and summarize the account in two sentences."
 ```
+
+`mcp_server_kit/_template.py`, `mcp-server-kit add-server` and `mcp-server-kit new` all
+generate an example of each primitive.

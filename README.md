@@ -49,6 +49,16 @@ class MyServer(AuthenticatedMCPServer):
         @self.mcp.tool(description="Add two numbers")
         def add(a: int, b: int) -> int:
             return a + b
+
+    def _register_resources(self):  # optional
+        @self.mcp.resource("info://my-server")
+        def info() -> str:
+            return "A server built with mcp-server-kit"
+
+    def _register_prompts(self):  # optional
+        @self.mcp.prompt
+        def explain_sum(a: int, b: int) -> str:
+            return f"Explain how to work out {a} + {b}."
 ```
 
 ---

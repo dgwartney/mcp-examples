@@ -10,6 +10,7 @@ Author:
 """
 
 import importlib
+import os
 import subprocess
 import sys
 
@@ -139,3 +140,41 @@ def test_generated_project_imports_without_db(tmp_path, monkeypatch, import_proj
     monkeypatch.chdir(tmp_path)
     import_project(proj, "clean_proj", "my_server")  # import only, do not access server
     assert not list(tmp_path.glob("*.db"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("standalone", [False, True])
+async def test_generated_server_serves_all_primitives(tmp_path, import_project, standalone):
+    """The starter server shows a tool, a resource, a resource template and a prompt."""
+    from fastmcp import Client
+
+    pkg = "prim_proj_vend" if standalone else "prim_proj_dep"
+    proj = scaffold.new_project(str(tmp_path / pkg), standalone=standalone, examples=[])
+    my_server = import_project(proj, pkg, "my_server")
+    srv = my_server.MyServer(db_path=str(tmp_path / "keys.db"))
+    async with Client(srv.mcp) as client:
+        assert {t.name for t in await client.list_tools()} == {"add"}
+        assert {str(r.uri) for r in await client.list_resources()} == {"info://my_server"}
+        assert {t.uriTemplate for t in await client.list_resource_templates()} == {
+            "numbers://{n}/square"
+        }
+        assert {p.name for p in await client.list_prompts()} == {"explain_sum"}
+        square = await client.read_resource("numbers://7/square")
+        assert square[0].text == "49"
+        prompt = await client.get_prompt("explain_sum", {"a": "2", "b": "3"})
+        assert "2 + 3" in prompt.messages[0].content.text
+
+
+def test_generated_project_tests_pass(tmp_path):
+    """The generated project's own test suite runs green."""
+    proj = scaffold.new_project(str(tmp_path / "green_proj"), standalone=False, examples=[])
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-o", "addopts=",
+         "tests"],
+        cwd=proj,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PYTHONPATH": str(proj)},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

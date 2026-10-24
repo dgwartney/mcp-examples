@@ -2,7 +2,9 @@
 Abstract base class for authenticated MCP servers.
 
 Provides API key authentication infrastructure so that subclasses only need
-to implement ``_register_tools()`` to add their own MCP tools.
+to implement ``_register_tools()`` to add their own MCP tools, and may
+override ``_register_resources()`` and ``_register_prompts()`` to serve the
+other two MCP primitives.
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -33,7 +35,10 @@ class AuthenticatedMCPServer(ABC):
     Abstract base class for MCP servers with API key authentication.
 
     Handles database initialization, middleware registration, and delegates
-    tool registration to subclasses via the ``_register_tools()`` hook.
+    registration of the three MCP primitives to subclasses: tools via the
+    required ``_register_tools()`` hook, resources and resource templates via
+    the optional ``_register_resources()`` hook, and prompts via the optional
+    ``_register_prompts()`` hook.
 
     Attributes:
         db_manager (DatabaseManager): Manages API key database operations.
@@ -67,11 +72,29 @@ class AuthenticatedMCPServer(ABC):
             StarletteMiddleware(ApiKeyMiddleware, db_manager=self.db_manager)
         ]
         self._register_tools()
+        self._register_resources()
+        self._register_prompts()
 
     @abstractmethod
     def _register_tools(self) -> None:
         """Subclasses must implement this to register their MCP tools."""
         ...
+
+    def _register_resources(self) -> None:
+        """
+        Override to register MCP resources and resource templates.
+
+        Use ``@self.mcp.resource("scheme://path")`` for a fixed resource and a
+        URI with ``{placeholders}`` for a resource template. The default
+        registers nothing.
+        """
+
+    def _register_prompts(self) -> None:
+        """
+        Override to register MCP prompts with ``@self.mcp.prompt``.
+
+        The default registers nothing.
+        """
 
     def close(self) -> None:
         """

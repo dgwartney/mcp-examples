@@ -683,7 +683,13 @@ class CvsDemoDatabase:
 
     def create_case(self, emplid: str, team: str, summary: str, restricted: Any = False,
                     case_type: str = "") -> dict:
-        """Open a ServiceNow HR case; Colleague Relations cases are always restricted."""
+        """
+        Open a ServiceNow HR case; Colleague Relations cases are always restricted.
+        Idempotent per colleague and team for the day: an open (state new) case for
+        the same team opened today is returned instead of a duplicate, with
+        ``created`` false and ``existing`` true. A retried or looped call never
+        opens two payroll cases.
+        """
         digits, refused = self._require(emplid)
         if refused:
             return refused
@@ -694,6 +700,11 @@ class CvsDemoDatabase:
             return _err("missing_summary", "I need a short description for the case.")
         restricted = coerce_bool(restricted) or team_name in RESTRICTED_TEAMS
         with self._conn() as conn:
+            same = conn.execute("SELECT * FROM cases WHERE emplid=? AND team=? AND state='new' AND opened_on=? "
+                                "ORDER BY case_id DESC LIMIT 1",
+                                (digits, team_name, as_of_date().isoformat())).fetchone()
+            if same is not None:
+                return {"created": False, "existing": True, **self._case_dict(same)}
             case_id = f"HRC{self._next(conn, 'case_seq'):07d}"
             conn.execute("INSERT INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                          (case_id, digits, team_name, case_type or team_name.lower().replace(" ", "_"),

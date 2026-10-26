@@ -486,6 +486,17 @@ class TestCases:
             stored = conn.execute("SELECT summary FROM cases WHERE case_id=?", (masked["case_id"],)).fetchone()
         assert "0142" in stored["summary"] and "312-555" not in stored["summary"]
 
+    def test_create_is_idempotent_per_team_per_day(self, db):
+        verify(db)
+        first = db.create_case(JEFF, "Payroll", "22 h unapproved")
+        again = db.create_case(JEFF, "payroll", "22 h unapproved, second try")
+        assert first["created"] is True and again["created"] is False and again["existing"] is True
+        assert again["case_id"] == first["case_id"]
+        other = db.create_case(JEFF, "Colleague Relations", "reported the leader")
+        assert other["created"] is True and other["case_id"] != first["case_id"]
+        db.update_case(first["case_id"], state="resolved")
+        assert db.create_case(JEFF, "Payroll", "new issue")["created"] is True
+
     @pytest.mark.asyncio
     async def test_update_case(self, server, db):
         verify(db)

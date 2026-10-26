@@ -162,9 +162,17 @@ def _last4(value: str) -> str:
     return rules.digits_only(value)[-4:]
 
 
-def spoken_digits(value: str) -> str:
-    """``'410221' -> 'four one zero, two two one'``: digits in groups of three, for TTS read-back."""
-    words = [rules.number_word_en(int(c)) for c in rules.digits_only(value)]
+_ES_DIGITS = ["cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve"]
+
+
+def spoken_digits(value: str, lang: str = "en") -> str:
+    """
+    ``'410221' -> 'four one zero, two two one'`` (or ``'cuatro uno cero, dos dos uno'``
+    with ``lang='es'``): digits in groups of three, for TTS read-back.
+    """
+    digits = rules.digits_only(value)
+    words = ([_ES_DIGITS[int(c)] for c in digits] if lang == "es"
+             else [rules.number_word_en(int(c)) for c in digits])
     return ", ".join(" ".join(words[i:i + 3]) for i in range(0, len(words), 3))
 
 
@@ -648,6 +656,7 @@ class CvsDemoDatabase:
         opened = date.fromisoformat(r["opened_on"])
         restricted = bool(r["restricted"])
         return {"case_id": r["case_id"], "case_id_spoken": f"H R C {spoken_digits(r['case_id'])}",
+                "case_id_spoken_es": f"hache erre ce {spoken_digits(r['case_id'], 'es')}",
                 "case_last4": r["case_id"][-4:], "team": r["team"], "case_type": r["case_type"],
                 "summary": "Confidential Colleague Relations case" if restricted else r["summary"],
                 "restricted": restricted, "state": r["state"], "opened_on": r["opened_on"],

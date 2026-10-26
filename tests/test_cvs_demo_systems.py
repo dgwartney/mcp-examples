@@ -115,6 +115,7 @@ async def test_scenario_1_end_to_end(server, db):
     assert pay_case["case_id"] == "HRC0098562" and pay_case["restricted"] is False
     assert cr_case["case_id"] == "HRC0098563" and cr_case["restricted"] is True
     assert cr_case["case_id_spoken"].startswith("H R C zero zero nine")
+    assert cr_case["case_id_spoken_es"].startswith("hache erre ce cero cero nueve, ocho cinco seis")
 
     listed = await call(server, "get_open_cases", emplid=JEFF)
     assert listed["count"] == 3

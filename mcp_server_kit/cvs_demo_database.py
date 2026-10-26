@@ -43,6 +43,7 @@ from zoneinfo import ZoneInfo
 
 from mcp_server_kit import cvs_hr_rules as rules
 from mcp_server_kit.cvs_hr_database import coerce_bool, coerce_list, normalize_e164
+from mcp_server_kit.spoken_dates import parse_spoken_date
 
 SYSTEM = "cvs_demo_systems"
 DEMO_TZ = ZoneInfo("America/Los_Angeles")
@@ -178,8 +179,10 @@ def days_text(days: float) -> str:
 def parse_dob(value: Any) -> Optional[date]:
     """
     Accept the ways a caller gives a date of birth: ``1991-03-14``,
-    ``03/14/1991``, ``March 14 1991``, keypad ``03141991`` (MMDDYYYY) or the
-    spoken digits of any of those. Returns None when it isn't a date.
+    ``03/14/1991``, ``March 14 1991``, keypad ``03141991`` (MMDDYYYY), the
+    spoken digits of any of those, or spoken English or Spanish
+    (``catorce de marzo de 1991``, see :mod:`spoken_dates`). Returns None when
+    it isn't a date.
     """
     text = str(value or "").strip()
     try:
@@ -199,7 +202,7 @@ def parse_dob(value: Any) -> Optional[date]:
                 return datetime.strptime(d, fmt).date()
             except ValueError:
                 continue
-    return None
+    return parse_spoken_date(text)
 
 
 def workdays_from(start: date, count: int) -> list[date]:

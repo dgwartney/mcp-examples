@@ -30,7 +30,7 @@ primary_region = 'ord'
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1  # CVS Phase 2 demo week; set back to 0 after Wed 2026-10-28
 
 [[vm]]
   size = 'shared-cpu-1x'

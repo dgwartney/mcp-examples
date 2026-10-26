@@ -245,44 +245,55 @@ class TestDroppedCall:
     ANI = "+1 (312) 555-0142"
 
     @pytest.mark.asyncio
-    async def test_same_number_callback(self, server, db):
-        # First call: one sentence, then the drop.
-        assert (await call(server, "save_call_context", ani=self.ANI,
-                           summary="Says the October paycheck was short"))["keyed_on"] == ["ani"]
-        await call(server, "verify_emplid_dob", emplid=JEFF, dob=DOB)
-        saved = await call(server, "save_call_context", emplid=JEFF, ani=self.ANI, intents="pay_issue",
-                           summary="October paycheck short; timecard not validated before payroll closed")
-        assert saved["keyed_on"] == ["emplid", "ani"]
-        with db._conn() as conn:
-            conn.execute("DELETE FROM verifications")
+    async def test_same_number_callback(self, server, db, monkeypatch):
+        monkeypatch.setenv("CVS_DEMO_ANI_ALIASES", self.ANI)
+        # First call: one sentence, a checkpoint by ANI, then the drop before verification.
+        first = await call(server, "save_call_context", ani=self.ANI, summary="Says the October paycheck was short",
+                           intents="pay_issue")
+        assert first["keyed_on"] == ["emplid", "ani"] and first["context_id"] == "1"
 
-        # Callback: ANI match gives only enough to greet and send the code.
-        ctx = await call(server, "get_call_context", ani="3125550142")
-        assert ctx["found"] is True and ctx["first_name"] == "Jeff" and ctx["mobile_last4"] == "4417"
-        assert ctx["verified_required"] is True and "summary" not in ctx
+        # Callback: the new call's own checkpoint is skipped; the ANI gives only enough to greet.
+        own = await call(server, "save_call_context", ani=self.ANI, summary="I got cut off")
+        ctx = await call(server, "get_call_context", ani="3125550142", exclude_context_id=own["context_id"])
+        assert ctx["found"] is True and ctx["context_id"] == "1"
+        assert (ctx["first_name"], ctx["mobile_last4"]) == ("Jeff", "4417")
+        assert ctx["verified_required"] is True and "summary" not in ctx and "emplid_last4" not in ctx
         assert (await call(server, "send_otp", ani=self.ANI))["mobile_last4"] == "4417"
         ok = await call(server, "verify_otp", code="135790", ani=self.ANI)
         assert ok["verified"] is True and ok["emplid"] == JEFF
 
-        full = await call(server, "get_call_context", emplid=JEFF)
-        assert full["summary"].startswith("October paycheck short") and full["intents"] == ["pay_issue"]
-        assert full["verified_required"] is False
+        full = await call(server, "get_call_context", emplid=JEFF, ani=self.ANI,
+                          exclude_context_id=own["context_id"])
+        assert full["summary"] == "Says the October paycheck was short" and full["intents"] == ["pay_issue"]
+        assert full["summary_verified"] is False and full["emplid_last4"] == "7203"
 
     def test_different_number_callback_uses_emplid(self, db):
         verify(db)
-        db.save_call_context(emplid=JEFF, ani="+13125550142", summary="pay short",
-                             open_case_ids="HRC0098561", pay_case_id="HRC0098562")
-        assert db.get_call_context(ani="+13125550999") == {"found": False}
-        ctx = db.get_call_context(emplid=JEFF)
+        first = db.save_call_context(emplid=JEFF, ani="+13125550142", summary="pay short",
+                                     open_case_ids="HRC0098561", pay_case_id="HRC0098562")
+        own = db.save_call_context(ani="+13125550999", summary="calling back")
+        assert db.get_call_context(ani="+13125550999", exclude_context_id=own["context_id"]) == {"found": False}
+        ctx = db.get_call_context(emplid=JEFF, ani="+13125550999", exclude_context_id=own["context_id"])
+        assert ctx["context_id"] == first["context_id"] and ctx["summary_verified"] is True
         assert ctx["open_case_ids"] == ["HRC0098561"] and ctx["pay_case_id"] == "HRC0098562"
 
-    def test_empty_fields_keep_saved_values(self, db):
+    def test_fresh_call_does_not_recall_itself(self, db):
+        own = db.save_call_context(ani="+13125550142", summary="first ever call")
         verify(db)
-        db.save_call_context(emplid=JEFF, summary="first", intents=["pay_issue"], absence_request="3 days PTO")
-        db.save_call_context(emplid=JEFF, cr_case_id="HRC0098563")
+        db.save_call_context(emplid=JEFF, ani="+13125550142", context_id=own["context_id"])
+        assert db.get_call_context(emplid=JEFF, ani="+13125550142",
+                                   exclude_context_id=own["context_id"]) == {"found": False}
+
+    def test_later_saves_update_the_same_checkpoint(self, db):
+        verify(db)
+        first = db.save_call_context(emplid=JEFF, summary="first", intents=["pay_issue"], absence_request="3 days PTO")
+        again = db.save_call_context(emplid=JEFF, cr_case_id="HRC0098563", context_id=first["context_id"])
+        assert again["context_id"] == first["context_id"]
         ctx = db.get_call_context(emplid=JEFF)
-        assert ctx["summary"] == "first" and ctx["intents"] == ["pay_issue"]
+        assert ctx["summary"] == "first" and ctx["intents"] == ["pay_issue"] and ctx["summary_verified"] is True
         assert ctx["cr_case_id"] == "HRC0098563" and ctx["absence_request"] == "3 days PTO"
+        db.save_call_context(context_id=first["context_id"], summary="")
+        assert db.get_call_context(emplid=JEFF)["summary"] == "first"
 
     def test_recall_window(self, db, monkeypatch):
         db.save_call_context(ani="+13125550142", summary="x")
@@ -297,26 +308,34 @@ class TestDroppedCall:
         assert db.get_call_context() == {"found": False}
 
     def test_drop_before_verification_known_number(self, db, monkeypatch):
-        """Scenario 1: one sentence, drop before verification, callback from the same phone."""
         monkeypatch.setenv("CVS_DEMO_ANI_ALIASES", "+1 312 555 0177, +13125550188")
         assert db.get_call_context(ani="(312) 555-0177") == {"found": False}
         db.save_call_context(ani="(312) 555-0177", summary="October paycheck short", intents="pay_issue")
         ctx = db.get_call_context(ani="+13125550177")
-        assert (ctx["first_name"], ctx["mobile_last4"], ctx["emplid_last4"]) == ("Jeff", "4417", "7203")
+        assert (ctx["first_name"], ctx["mobile_last4"]) == ("Jeff", "4417")
         assert db.send_otp(ani="+13125550177")["mobile_last4"] == "4417"
         assert db.verify_otp("135790", ani="+13125550177")["emplid"] == JEFF
         assert db.get_call_context(emplid=JEFF)["summary"] == "October paycheck short"
-        db.save_call_context(ani="+13125550177", cr_case_id="HRC0098563")
-        assert db.get_call_context(emplid=JEFF)["cr_case_id"] == "HRC0098563"
 
     def test_mobile_on_file_identifies_without_context(self, db):
         assert db.send_otp(ani="555-010-4417")["emplid_last4"] == "7203"
         assert db.get_call_context(ani="+15550104417") == {"found": False}
 
-    def test_ani_only_context_before_emplid(self, db):
+    def test_unknown_number_context(self, db):
         db.save_call_context(ani="+13125550142", summary="x")
         ctx = db.get_call_context(ani="+13125550142")
-        assert ctx["found"] is True and ctx["first_name"] == "" and ctx["emplid_last4"] == ""
+        assert ctx["found"] is True and ctx["first_name"] == "" and ctx["mobile_last4"] == ""
+
+    def test_old_file_gets_the_new_column(self, tmp_path):
+        import sqlite3
+        path = str(tmp_path / "old.db")
+        conn = sqlite3.connect(path)
+        conn.execute("CREATE TABLE call_context (id INTEGER PRIMARY KEY AUTOINCREMENT, emplid TEXT, ani TEXT, "
+                     "summary TEXT, intents TEXT, open_case_ids TEXT, pay_case_id TEXT, cr_case_id TEXT, "
+                     "absence_request TEXT, updated_at TEXT)")
+        conn.commit()
+        conn.close()
+        assert open_database(path).save_call_context(ani="+13125550142", summary="x")["saved"] is True
 
 
 # ---------------------------------------------------------------------------

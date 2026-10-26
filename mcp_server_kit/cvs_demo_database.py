@@ -122,7 +122,8 @@ CREATE TABLE IF NOT EXISTS verifications (emplid TEXT PRIMARY KEY, method TEXT, 
 CREATE TABLE IF NOT EXISTS otps (emplid TEXT PRIMARY KEY, code_hash TEXT, expires_at TEXT, tries INTEGER);
 CREATE TABLE IF NOT EXISTS call_context (
     id INTEGER PRIMARY KEY AUTOINCREMENT, emplid TEXT, ani TEXT, summary TEXT, intents TEXT,
-    open_case_ids TEXT, pay_case_id TEXT, cr_case_id TEXT, absence_request TEXT, updated_at TEXT);
+    open_case_ids TEXT, pay_case_id TEXT, cr_case_id TEXT, absence_request TEXT, updated_at TEXT,
+    summary_verified INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS audit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT, tool TEXT, args TEXT, result TEXT, at TEXT, status TEXT);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -249,6 +250,9 @@ class CvsDemoDatabase:
         """Create the tables and seed them once; an existing seed is never rewritten."""
         with self._conn() as conn:
             conn.executescript(_SCHEMA)
+            columns = {r["name"] for r in conn.execute("PRAGMA table_info(call_context)")}
+            if "summary_verified" not in columns:  # files created before 2026-10-26
+                conn.execute("ALTER TABLE call_context ADD COLUMN summary_verified INTEGER DEFAULT 0")
             if conn.execute("SELECT 1 FROM colleagues").fetchone() is None:
                 self._seed(conn)
 
@@ -709,27 +713,35 @@ class CvsDemoDatabase:
 
     # ------------------------------------------------------------ call context
 
-    def _recent_context(self, conn: sqlite3.Connection, emplid: str = "", ani: str = "") -> Optional[sqlite3.Row]:
+    def _recent_context(self, conn: sqlite3.Connection, emplid: str = "", ani: str = "",
+                        exclude_id: int = 0) -> Optional[sqlite3.Row]:
+        """Most recent checkpoint in the recall window matching the EMPLID or the ANI, skipping ``exclude_id``."""
         since = _iso(_utcnow() - timedelta(minutes=RECALL_WINDOW_MINUTES))
+        keys, params = [], []
         if emplid:
-            return conn.execute("SELECT * FROM call_context WHERE emplid=? AND updated_at>=? "
-                                "ORDER BY updated_at DESC, id DESC LIMIT 1", (emplid, since)).fetchone()
+            keys.append("emplid=?")
+            params.append(emplid)
         if ani:
-            return conn.execute("SELECT * FROM call_context WHERE ani=? AND updated_at>=? "
-                                "ORDER BY updated_at DESC, id DESC LIMIT 1", (ani, since)).fetchone()
-        return None
+            keys.append("ani=?")
+            params.append(ani)
+        if not keys:
+            return None
+        return conn.execute(f"SELECT * FROM call_context WHERE ({' OR '.join(keys)}) AND updated_at>=? AND id!=? "
+                            "ORDER BY updated_at DESC, id DESC LIMIT 1", (*params, since, exclude_id)).fetchone()
 
     def save_call_context(self, emplid: str = "", ani: str = "", summary: str = "", intents: Any = None,
                           open_case_ids: Any = None, pay_case_id: str = "", cr_case_id: str = "",
-                          absence_request: str = "") -> dict:
+                          absence_request: str = "", context_id: Any = "") -> dict:
         """
-        Checkpoint the call so a dropped call can resume. Keyed on the EMPLID
-        once verified and on the caller's number (ANI); empty fields keep
-        their saved value.
+        Checkpoint the call so a dropped call can resume. The first save of a
+        call creates a checkpoint and returns its ``context_id``; later saves
+        pass it back and update that checkpoint (empty fields keep their saved
+        value). Keyed on the caller's number (ANI) and, once verified, the
+        EMPLID; an ANI that identifies a colleague links the EMPLID straight away.
         """
         digits = rules.digits_only(emplid)
         number = normalize_e164(ani)
-        if not digits and not number:
+        if not digits and not number and not str(context_id or "").strip():
             return _err("no_key", "Nothing to key the call on yet.")
         if digits and not self.is_verified(digits):
             return _err("not_verified", "Context is saved by EMPLID only after verification.")
@@ -737,39 +749,46 @@ class CvsDemoDatabase:
                   "open_case_ids": json.dumps(coerce_list(open_case_ids)), "pay_case_id": pay_case_id or "",
                   "cr_case_id": cr_case_id or "", "absence_request": str(absence_request or "").strip()}
         empty = {"intents": "[]", "open_case_ids": "[]"}
+        cid = rules.digits_only(context_id)
         with self._conn() as conn:
             known = self._colleague_by_ani(conn, number) if number and not digits else None
-            row = (self._recent_context(conn, emplid=digits) if digits else None) or \
-                  (self._recent_context(conn, ani=number) if number else None)
+            linked = digits or (known["emplid"] if known else "")
+            row = conn.execute("SELECT * FROM call_context WHERE id=?", (int(cid),)).fetchone() if cid else None
             now = _iso(_utcnow())
             if row is None:
-                conn.execute("INSERT INTO call_context (emplid, ani, summary, intents, open_case_ids, pay_case_id, "
-                             "cr_case_id, absence_request, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                             (digits or (known["emplid"] if known else ""), number, *fields.values(), now))
+                cur = conn.execute("INSERT INTO call_context (emplid, ani, summary, intents, open_case_ids, pay_case_id, "
+                                   "cr_case_id, absence_request, updated_at, summary_verified) "
+                                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                   (linked, number, *fields.values(), now, int(bool(digits and fields["summary"]))))
+                new_id = cur.lastrowid
             else:
                 merged = {k: (v if v and v != empty.get(k) else row[k]) for k, v in fields.items()}
+                summary_verified = int(bool(digits and fields["summary"])) or (
+                    row["summary_verified"] if not fields["summary"] else 0)
                 conn.execute("UPDATE call_context SET emplid=?, ani=?, summary=?, intents=?, open_case_ids=?, "
-                             "pay_case_id=?, cr_case_id=?, absence_request=?, updated_at=? WHERE id=?",
-                             (digits or row["emplid"] or (known["emplid"] if known else ""), number or row["ani"],
-                              *merged.values(), now, row["id"]))
-        return {"saved": True, "keyed_on": [k for k, v in (("emplid", digits), ("ani", number)) if v]}
+                             "pay_case_id=?, cr_case_id=?, absence_request=?, updated_at=?, summary_verified=? "
+                             "WHERE id=?",
+                             (linked or row["emplid"], number or row["ani"], *merged.values(), now,
+                              summary_verified, row["id"]))
+                new_id = row["id"]
+        return {"saved": True, "context_id": str(new_id),
+                "keyed_on": [k for k, v in (("emplid", linked), ("ani", number)) if v]}
 
-    def get_call_context(self, ani: str = "", emplid: str = "") -> dict:
+    def get_call_context(self, ani: str = "", emplid: str = "", exclude_context_id: Any = "") -> dict:
         """
-        Look for a call from this caller in the last 30 minutes. Before
+        Look for an earlier call from this caller in the last 30 minutes,
+        skipping this call's own checkpoint (``exclude_context_id``). Before
         verification (ANI only) it returns just enough to greet and send the
-        code: first name and mobile last 4. The summary, intents and cases
-        come back only for a verified EMPLID.
+        code: first name and mobile last 4. The summary, intents and cases come
+        back only for a verified EMPLID (matched on the EMPLID or the ANI).
         """
         digits = rules.digits_only(emplid)
         number = normalize_e164(ani)
+        exclude = int(rules.digits_only(exclude_context_id) or 0)
         with self._conn() as conn:
-            if digits:
-                if not self.is_verified(digits):
-                    return _err("not_verified", "I need to verify you before I can look at that.")
-                row = self._recent_context(conn, emplid=digits)
-            else:
-                row = self._recent_context(conn, ani=number)
+            if digits and not self.is_verified(digits):
+                return _err("not_verified", "I need to verify you before I can look at that.")
+            row = self._recent_context(conn, emplid=digits, ani=number, exclude_id=exclude)
             colleague = None
             if row is not None:
                 colleague = (self._colleague(conn, row["emplid"]) if row["emplid"]
@@ -777,14 +796,17 @@ class CvsDemoDatabase:
         if row is None:
             return {"found": False}
         minutes = int((_utcnow() - datetime.fromisoformat(row["updated_at"])).total_seconds() // 60)
-        result = {"found": True, "minutes_ago": minutes, "verified_required": not digits,
+        result = {"found": True, "context_id": str(row["id"]), "minutes_ago": minutes,
+                  "verified_required": not digits,
                   "first_name": colleague["first_name"] if colleague else "",
-                  "mobile_last4": _last4(colleague["mobile"]) if colleague else "",
-                  "emplid_last4": row["emplid"][-4:] if row["emplid"] else ""}
+                  "mobile_last4": _last4(colleague["mobile"]) if colleague else ""}
         if digits:
             result.update({"summary": row["summary"], "intents": json.loads(row["intents"]),
                            "open_case_ids": json.loads(row["open_case_ids"]), "pay_case_id": row["pay_case_id"],
-                           "cr_case_id": row["cr_case_id"], "absence_request": row["absence_request"]})
+                           "cr_case_id": row["cr_case_id"], "absence_request": row["absence_request"],
+                           "has_summary": bool(row["summary"]),
+                           "summary_verified": bool(row["summary_verified"]),
+                           "emplid_last4": row["emplid"][-4:] if row["emplid"] else ""})
         return result
 
 

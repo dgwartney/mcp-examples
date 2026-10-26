@@ -219,30 +219,32 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
 
         @self.mcp.tool(description=(
             "Checkpoint the call so a dropped call can resume: a one-line summary, the intents and any case "
-            "IDs. Key on the caller's number (ani) and, once verified, the EMPLID. Call it every turn that "
-            "changes something."))
+            "IDs. Key on the caller's number (ani) and, once verified, the EMPLID. The first save returns "
+            "context_id; pass it on every later save in the same call."))
         def save_call_context(emplid: str = "", ani: str = "", summary: str = "", intents: str = "",
                               open_case_ids: str = "", pay_case_id: str = "", cr_case_id: str = "",
-                              absence_request: str = "") -> dict:
+                              absence_request: str = "", context_id: str = "") -> dict:
             """
             Returns:
-                saved, keyed_on.
+                saved, context_id, keyed_on.
             """
             args = dict(emplid=emplid, ani=ani, summary=summary, intents=intents, open_case_ids=open_case_ids,
-                        pay_case_id=pay_case_id, cr_case_id=cr_case_id, absence_request=absence_request)
+                        pay_case_id=pay_case_id, cr_case_id=cr_case_id, absence_request=absence_request,
+                        context_id=context_id)
             return run("save_call_context", args, lambda: db.save_call_context(**args))
 
         @self.mcp.tool(description=(
-            "Look for a call from this caller in the last 30 minutes. With only ani it returns first_name and "
-            "mobile_last4 (enough to greet and send a code); with a verified emplid it also returns the "
-            "summary, intents and cases."))
-        def get_call_context(ani: str = "", emplid: str = "") -> dict:
+            "Look for an earlier call from this caller in the last 30 minutes (pass this call's own "
+            "context_id as exclude_context_id). With only ani it returns first_name and mobile_last4 (enough "
+            "to greet and send a code); with a verified emplid it also returns the summary, intents and cases."))
+        def get_call_context(ani: str = "", emplid: str = "", exclude_context_id: str = "") -> dict:
             """
             Returns:
-                found, minutes_ago, verified_required, first_name, mobile_last4, emplid_last4;
-                for a verified emplid also summary, intents, open_case_ids, pay_case_id, cr_case_id.
+                found, context_id, minutes_ago, verified_required, first_name, mobile_last4, emplid_last4;
+                for a verified emplid also summary, has_summary, intents, open_case_ids, pay_case_id, cr_case_id.
             """
-            return run("get_call_context", dict(ani=ani, emplid=emplid), lambda: db.get_call_context(ani, emplid))
+            args = dict(ani=ani, emplid=emplid, exclude_context_id=exclude_context_id)
+            return run("get_call_context", args, lambda: db.get_call_context(ani, emplid, exclude_context_id))
 
         @self.mcp.tool(description=(
             "Admin only, never for callers: re-seed the demo data (status_only=true just reports). "

@@ -11,6 +11,8 @@ primary_region = 'ord'
   # Acme (the learning guide's labs) runs in its own app: see fly.acme.toml.
   MCP_SERVICES_EXCLUDE = 'acme'
   CVS_HR_DB_PATH = '/data/cvs_hr.db'
+  # CVS Phase 2 demo (cvs_demo_systems): its own file, so Savvy's cvs_hr.db is never touched.
+  CVS_DEMO_DB_PATH = '/data/cvs_demo.db'
   # CVS HR demo (Savvy): optional, set per demo, never committed —
   #   fly secrets set CVS_HR_DEMO_SMS_TO=<E.164 handset>   (sms_to for case texts)
   #   fly secrets set CVS_HR_AS_OF=2026-10-08               (pin the as-of date; unset afterwards)

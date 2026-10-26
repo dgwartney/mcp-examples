@@ -30,8 +30,8 @@ class FakeServer:
 
 class TestServerRegistry:
 
-    def test_registry_has_thirteen_entries(self):
-        assert len(combined.SERVER_REGISTRY) == 13
+    def test_registry_has_fourteen_entries(self):
+        assert len(combined.SERVER_REGISTRY) == 14
 
     def test_registry_prefixes(self):
         prefixes = [prefix for prefix, _ in combined.SERVER_REGISTRY]
@@ -39,7 +39,7 @@ class TestServerRegistry:
             "greet", "contacts", "wikipedia", "weather", "messaging",
             "pto", "onboarding", "acme",
             "cvs_identity", "workday_hcm", "time_attendance", "servicenow_hrsd",
-            "cvs_hr_router",
+            "cvs_hr_router", "cvs_demo_systems",
         ]
 
     def test_rest_registry_paths(self):
@@ -83,11 +83,11 @@ class TestBuild:
             transport="streamable-http",
         )
 
-    def test_build_real_registry_produces_thirteen_routes(self):
+    def test_build_real_registry_produces_fourteen_routes(self):
         routes, sub_apps, servers = combined._build()
-        assert len(routes) == 13
-        assert len(sub_apps) == 13
-        assert len(servers) == 13
+        assert len(routes) == 14
+        assert len(sub_apps) == 14
+        assert len(servers) == 14
         assert [r.path for r in routes] == [
             "/greet",
             "/contacts",
@@ -102,6 +102,7 @@ class TestBuild:
             "/time_attendance",
             "/servicenow_hrsd",
             "/cvs_hr_router",
+            "/cvs_demo_systems",
         ]
 
 
@@ -128,6 +129,7 @@ class TestApp:
             "/time_attendance",
             "/servicenow_hrsd",
             "/cvs_hr_router",
+            "/cvs_demo_systems",
         }
 
     def test_rest_mounts_come_before_mcp_mounts(self):

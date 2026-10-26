@@ -31,6 +31,8 @@ __all__ = [
     "TimeAttendanceMCPServer",
     "ServicenowHrsdMCPServer",
     "CvsHrRouterMCPServer",
+    "CvsDemoDatabase",
+    "CvsDemoSystemsMCPServer",
 ]
 
 _LAZY_IMPORTS: dict[str, str] = {
@@ -54,6 +56,8 @@ _LAZY_IMPORTS: dict[str, str] = {
     "TimeAttendanceMCPServer": "mcp_server_kit.time_attendance",
     "ServicenowHrsdMCPServer": "mcp_server_kit.servicenow_hrsd",
     "CvsHrRouterMCPServer": "mcp_server_kit.cvs_hr_router",
+    "CvsDemoDatabase": "mcp_server_kit.cvs_demo_database",
+    "CvsDemoSystemsMCPServer": "mcp_server_kit.cvs_demo_systems",
 }
 
 

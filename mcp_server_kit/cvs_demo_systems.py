@@ -164,18 +164,19 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
         @self.mcp.tool(description=(
             "Submit time off after the colleague confirmed it. absence_type: pto, sick, floating_holiday, "
             "bereavement or jury_duty; start_date ISO (YYYY-MM-DD); days or hours. Errors: WRONG_TYPE, "
-            "INSUFFICIENT_BALANCE (with the numbers), WRONG_AMOUNT, BAD_DATE."))
+            "INSUFFICIENT_BALANCE (with the numbers), WRONG_AMOUNT, BAD_DATE. validate_only=true runs the same "
+            "checks without submitting (use it before asking the colleague to confirm)."))
         def submit_time_off(emplid: str, absence_type: str, start_date: str, days: float = 0,
-                            hours: float = 0, reason: str = "") -> dict:
+                            hours: float = 0, reason: str = "", validate_only: bool = False) -> dict:
             """
             Returns:
                 submitted, confirmation, confirmation_spoken, type_name, days, dates_display,
                 remaining_days, display; or error + display + the numbers.
             """
             args = dict(emplid=emplid, absence_type=absence_type, start_date=start_date, days=days,
-                        hours=hours, reason=reason)
-            return run("submit_time_off", args,
-                       lambda: db.submit_time_off(emplid, absence_type, start_date, days, hours, reason))
+                        hours=hours, reason=reason, validate_only=validate_only)
+            return run("submit_time_off", args, lambda: db.submit_time_off(
+                emplid, absence_type, start_date, days, hours, reason, validate_only))
 
         @self.mcp.tool(description="List the verified colleague's open HR cases (ServiceNow).")
         def get_open_cases(emplid: str) -> dict:

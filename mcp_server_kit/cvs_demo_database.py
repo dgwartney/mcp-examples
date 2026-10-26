@@ -562,12 +562,13 @@ class CvsDemoDatabase:
         return {"types": ABSENCE_TYPES, "hours_per_day": HOURS_PER_DAY}
 
     def submit_time_off(self, emplid: str, absence_type: str, start_date: str, days: float = 0,
-                        hours: float = 0, reason: str = "") -> dict:
+                        hours: float = 0, reason: str = "", validate_only: Any = False) -> dict:
         """
         Submit time off after the deterministic checks: the type must fit
         (a leave of absence isn't filed here), and ``requested_hours <=
         available_hours`` for a balance type. Errors carry ``WRONG_TYPE`` or
         ``INSUFFICIENT_BALANCE`` plus the numbers to explain the gap.
+        ``validate_only`` runs every check and returns ``valid`` without submitting.
         """
         digits, refused = self._require(emplid)
         if refused:
@@ -596,7 +597,7 @@ class CvsDemoDatabase:
             if _TYPES[kind]["uses_balance"]:
                 available = conn.execute("SELECT hours FROM balances WHERE emplid=? AND type=?",
                                          (digits, kind)).fetchone()["hours"]
-                if requested > available:
+                if requested > available:  # the deterministic check the brief requires
                     avail_days = available / HOURS_PER_DAY
                     over = req_days - avail_days
                     return _err("INSUFFICIENT_BALANCE",
@@ -605,11 +606,21 @@ class CvsDemoDatabase:
                                  f"{days_text(over)} over."),
                                 type=kind, requested_hours=requested, available_hours=available,
                                 requested_days=req_days, available_days=avail_days, over_by_days=over)
-                conn.execute("UPDATE balances SET hours=hours-? WHERE emplid=? AND type=?", (requested, digits, kind))
                 remaining = available - requested
             else:
                 remaining = None
             dates = workdays_from(start, max(1, int(-(-req_days // 1))))
+            if coerce_bool(validate_only):
+                result = {"valid": True, "type": kind, "type_name": _TYPES[kind]["name"], "hours": requested,
+                          "days": req_days, "start_date": dates[0].isoformat(), "end_date": dates[-1].isoformat(),
+                          "dates_display": rules.days_display_en(dates),
+                          "display": (f"{days_text(req_days).capitalize()} of {_TYPES[kind]['name']}, "
+                                      f"{rules.days_display_en(dates)}.")}
+                if remaining is not None:
+                    result["remaining_days_after"] = remaining / HOURS_PER_DAY
+                return result
+            if remaining is not None:
+                conn.execute("UPDATE balances SET hours=hours-? WHERE emplid=? AND type=?", (requested, digits, kind))
             confirmation = str(self._next(conn, "time_off_seq"))
             conn.execute("INSERT INTO time_off VALUES (?, ?, ?, ?, ?, ?, ?)",
                          (confirmation, digits, kind, dates[0].isoformat(), dates[-1].isoformat(), requested,

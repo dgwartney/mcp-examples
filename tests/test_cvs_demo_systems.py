@@ -405,6 +405,16 @@ class TestAbsence:
         assert pto["remaining_days"] == 0.0 and fh["remaining_hours"] == 0.0
         assert db.get_absence_balances(JEFF)["balances"][0]["hours"] == 0.0
 
+    def test_validate_only_checks_without_submitting(self, db):
+        verify(db)
+        assert db.submit_time_off(JEFF, "pto", "2026-11-02", days=5, validate_only=True)["error"] == "INSUFFICIENT_BALANCE"
+        ok = db.submit_time_off(JEFF, "pto", "2026-11-02", days=3, validate_only="true")
+        assert ok["valid"] is True and ok["remaining_days_after"] == 0.0 and "confirmation" not in ok
+        jury = db.submit_time_off(JEFF, "jury_duty", "2026-11-02", days=1, validate_only=True)
+        assert jury["valid"] is True and "remaining_days_after" not in jury
+        assert db.get_absence_balances(JEFF)["balances"][0]["hours"] == 24.0
+        assert db.status()["counts"]["time_off"] == 0
+
     def test_weekend_start_rolls_to_workdays(self, db):
         verify(db)
         r = db.submit_time_off(JEFF, "sick", "2026-10-31", days=2)

@@ -26,6 +26,8 @@ Environment Variables:
     CVS_DEMO_AS_OF:         Optional ISO date overriding "today" (tests).
     CVS_HR_DEMO_SMS_TO:     Demo handset that receives every SMS (shared with Savvy).
     CVS_DEMO_REHEARSAL_OTP: Code used while SMS is off (default 135790).
+    CVS_DEMO_ANI_ALIASES:   Comma-separated caller numbers that identify Jeff, besides his
+                            mobile on file (the role-player's phone on demo day).
 """
 
 import hashlib
@@ -47,6 +49,7 @@ DEMO_TZ = ZoneInfo("America/Los_Angeles")
 AS_OF_ENV = "CVS_DEMO_AS_OF"
 SMS_TO_ENV = "CVS_HR_DEMO_SMS_TO"
 REHEARSAL_OTP_ENV = "CVS_DEMO_REHEARSAL_OTP"
+ANI_ALIASES_ENV = "CVS_DEMO_ANI_ALIASES"
 DEFAULT_REHEARSAL_OTP = "135790"
 HOURS_PER_DAY = 8.0
 OTP_TTL_SECONDS = 300
@@ -326,6 +329,17 @@ class CvsDemoDatabase:
     def _colleague(self, conn: sqlite3.Connection, emplid: str) -> Optional[sqlite3.Row]:
         return conn.execute("SELECT * FROM colleagues WHERE emplid=?", (emplid,)).fetchone()
 
+    def _colleague_by_ani(self, conn: sqlite3.Connection, ani: str) -> Optional[sqlite3.Row]:
+        """The colleague whose mobile on file is this number, or Jeff when it's a configured alias."""
+        number = normalize_e164(ani)
+        if not number:
+            return None
+        row = conn.execute("SELECT * FROM colleagues WHERE mobile=?", (number,)).fetchone()
+        if row is not None:
+            return row
+        aliases = {normalize_e164(a) for a in os.environ.get(ANI_ALIASES_ENV, "").split(",") if a.strip()}
+        return self._colleague(conn, JEFF["emplid"]) if number in aliases else None
+
     def _identity(self, row: sqlite3.Row, method: str) -> dict:
         return {"verified": True, "emplid": row["emplid"], "emplid_last4": row["emplid"][-4:],
                 "emplid_display": f"ending {row['emplid'][-4:]}", "first_name": row["first_name"],
@@ -383,7 +397,9 @@ class CvsDemoDatabase:
         if digits:
             return self._colleague(conn, digits)
         ctx = self._recent_context(conn, ani=normalize_e164(ani))
-        return self._colleague(conn, ctx["emplid"]) if ctx and ctx["emplid"] else None
+        if ctx is not None and ctx["emplid"]:
+            return self._colleague(conn, ctx["emplid"])
+        return self._colleague_by_ani(conn, ani)
 
     def _sms_target(self) -> str:
         return normalize_e164(os.environ.get(SMS_TO_ENV, "")) if self.sms_enabled() else ""
@@ -722,18 +738,20 @@ class CvsDemoDatabase:
                   "cr_case_id": cr_case_id or "", "absence_request": str(absence_request or "").strip()}
         empty = {"intents": "[]", "open_case_ids": "[]"}
         with self._conn() as conn:
+            known = self._colleague_by_ani(conn, number) if number and not digits else None
             row = (self._recent_context(conn, emplid=digits) if digits else None) or \
                   (self._recent_context(conn, ani=number) if number else None)
             now = _iso(_utcnow())
             if row is None:
                 conn.execute("INSERT INTO call_context (emplid, ani, summary, intents, open_case_ids, pay_case_id, "
                              "cr_case_id, absence_request, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                             (digits, number, *fields.values(), now))
+                             (digits or (known["emplid"] if known else ""), number, *fields.values(), now))
             else:
                 merged = {k: (v if v and v != empty.get(k) else row[k]) for k, v in fields.items()}
                 conn.execute("UPDATE call_context SET emplid=?, ani=?, summary=?, intents=?, open_case_ids=?, "
                              "pay_case_id=?, cr_case_id=?, absence_request=?, updated_at=? WHERE id=?",
-                             (digits or row["emplid"], number or row["ani"], *merged.values(), now, row["id"]))
+                             (digits or row["emplid"] or (known["emplid"] if known else ""), number or row["ani"],
+                              *merged.values(), now, row["id"]))
         return {"saved": True, "keyed_on": [k for k, v in (("emplid", digits), ("ani", number)) if v]}
 
     def get_call_context(self, ani: str = "", emplid: str = "") -> dict:
@@ -752,7 +770,10 @@ class CvsDemoDatabase:
                 row = self._recent_context(conn, emplid=digits)
             else:
                 row = self._recent_context(conn, ani=number)
-            colleague = self._colleague(conn, row["emplid"]) if row is not None and row["emplid"] else None
+            colleague = None
+            if row is not None:
+                colleague = (self._colleague(conn, row["emplid"]) if row["emplid"]
+                             else self._colleague_by_ani(conn, number))
         if row is None:
             return {"found": False}
         minutes = int((_utcnow() - datetime.fromisoformat(row["updated_at"])).total_seconds() // 60)

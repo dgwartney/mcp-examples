@@ -296,6 +296,23 @@ class TestDroppedCall:
         assert db.get_call_context(emplid=JEFF)["error"] == "not_verified"
         assert db.get_call_context() == {"found": False}
 
+    def test_drop_before_verification_known_number(self, db, monkeypatch):
+        """Scenario 1: one sentence, drop before verification, callback from the same phone."""
+        monkeypatch.setenv("CVS_DEMO_ANI_ALIASES", "+1 312 555 0177, +13125550188")
+        assert db.get_call_context(ani="(312) 555-0177") == {"found": False}
+        db.save_call_context(ani="(312) 555-0177", summary="October paycheck short", intents="pay_issue")
+        ctx = db.get_call_context(ani="+13125550177")
+        assert (ctx["first_name"], ctx["mobile_last4"], ctx["emplid_last4"]) == ("Jeff", "4417", "7203")
+        assert db.send_otp(ani="+13125550177")["mobile_last4"] == "4417"
+        assert db.verify_otp("135790", ani="+13125550177")["emplid"] == JEFF
+        assert db.get_call_context(emplid=JEFF)["summary"] == "October paycheck short"
+        db.save_call_context(ani="+13125550177", cr_case_id="HRC0098563")
+        assert db.get_call_context(emplid=JEFF)["cr_case_id"] == "HRC0098563"
+
+    def test_mobile_on_file_identifies_without_context(self, db):
+        assert db.send_otp(ani="555-010-4417")["emplid_last4"] == "7203"
+        assert db.get_call_context(ani="+15550104417") == {"found": False}
+
     def test_ani_only_context_before_emplid(self, db):
         db.save_call_context(ani="+13125550142", summary="x")
         ctx = db.get_call_context(ani="+13125550142")

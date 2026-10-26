@@ -93,7 +93,7 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
         @self.mcp.tool(description=(
             "Text a six-digit one-time code to the colleague's mobile on file. Give the EMPLID, or the "
             "caller's phone number (ani) on a callback before the EMPLID is known."))
-        def send_otp(emplid: str = "", ani: str = "") -> dict:
+        def send_otp(emplid: Optional[str] = "", ani: Optional[str] = "") -> dict:
             """
             Returns:
                 sent, mobile_last4, emplid_last4, expires_in_seconds, delivery (sms | rehearsal);
@@ -105,7 +105,7 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
         @self.mcp.tool(description=(
             "Check the six-digit code the caller reads back. Codes expire after 5 minutes and allow 3 tries. "
             "Give the same emplid or ani used for send_otp."))
-        def verify_otp(code: str, emplid: str = "", ani: str = "") -> dict:
+        def verify_otp(code: str, emplid: Optional[str] = "", ani: Optional[str] = "") -> dict:
             """
             Returns:
                 verified, outcome, emplid, emplid_last4, first_name, colleague_name, auth_method;
@@ -115,7 +115,7 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
                        lambda: db.verify_otp(code, emplid, ani))
 
         @self.mcp.tool(description="Get the verified colleague's timecard for the period (default: ending 2026-10-03).")
-        def get_timecard(emplid: str, period_end: str = "") -> dict:
+        def get_timecard(emplid: str, period_end: Optional[str] = "") -> dict:
             """
             Returns:
                 period_end, period_end_display, hours_recorded, approved_hours, unapproved_hours,
@@ -167,7 +167,7 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
             "INSUFFICIENT_BALANCE (with the numbers), WRONG_AMOUNT, BAD_DATE. validate_only=true runs the same "
             "checks without submitting (use it before asking the colleague to confirm)."))
         def submit_time_off(emplid: str, absence_type: str, start_date: str, days: float = 0,
-                            hours: float = 0, reason: str = "", validate_only: bool = False) -> dict:
+                            hours: float = 0, reason: Optional[str] = "", validate_only: bool = False) -> dict:
             """
             Returns:
                 submitted, confirmation, confirmation_spoken, type_name, days, dates_display,
@@ -192,7 +192,7 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
             "Attendance or HR Service Center. restricted=true for a confidential case (Colleague Relations "
             "is always restricted)."))
         def create_case(emplid: str, team: str, summary: str, restricted: bool = False,
-                        case_type: str = "") -> dict:
+                        case_type: Optional[str] = "") -> dict:
             """
             Returns:
                 created, case_id, case_id_spoken, case_last4, team, restricted, state, opened_display.
@@ -201,7 +201,7 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
             return run("create_case", args, lambda: db.create_case(emplid, team, summary, restricted, case_type))
 
         @self.mcp.tool(description="Add a note to an HR case and optionally change its state.")
-        def update_case(case_id: str, note: str = "", state: str = "") -> dict:
+        def update_case(case_id: str, note: Optional[str] = "", state: Optional[str] = "") -> dict:
             """
             Returns:
                 updated, notes (count), case_id, state.
@@ -222,9 +222,9 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
             "Checkpoint the call so a dropped call can resume: a one-line summary, the intents and any case "
             "IDs. Key on the caller's number (ani) and, once verified, the EMPLID. The first save returns "
             "context_id; pass it on every later save in the same call."))
-        def save_call_context(emplid: str = "", ani: str = "", summary: str = "", intents: str = "",
-                              open_case_ids: str = "", pay_case_id: str = "", cr_case_id: str = "",
-                              absence_request: str = "", context_id: str = "") -> dict:
+        def save_call_context(emplid: Optional[str] = "", ani: Optional[str] = "", summary: Optional[str] = "", intents: Optional[str] = "",
+                              open_case_ids: Optional[str] = "", pay_case_id: Optional[str] = "", cr_case_id: Optional[str] = "",
+                              absence_request: Optional[str] = "", context_id: Optional[str] = "") -> dict:
             """
             Returns:
                 saved, context_id, keyed_on.
@@ -238,7 +238,7 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
             "Look for an earlier call from this caller in the last 30 minutes (pass this call's own "
             "context_id as exclude_context_id). With only ani it returns first_name and mobile_last4 (enough "
             "to greet and send a code); with a verified emplid it also returns the summary, intents and cases."))
-        def get_call_context(ani: str = "", emplid: str = "", exclude_context_id: str = "") -> dict:
+        def get_call_context(ani: Optional[str] = "", emplid: Optional[str] = "", exclude_context_id: Optional[str] = "") -> dict:
             """
             Returns:
                 found, context_id, minutes_ago, verified_required, first_name, mobile_last4, emplid_last4;

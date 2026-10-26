@@ -128,6 +128,15 @@ async def test_scenario_1_end_to_end(server, db):
 
 
 @pytest.mark.asyncio
+async def test_null_optional_strings_are_accepted(server):
+    """Artemis sends null for an unset session variable (caller_ani in a text test)."""
+    assert (await call(server, "get_call_context", ani=None, emplid=None, exclude_context_id=None)) == {"found": False}
+    r = await call(server, "save_call_context", ani=None, summary="pay short", context_id=None)
+    assert r["error"] == "no_key"
+    assert (await call(server, "send_otp", emplid=JEFF, ani=None))["sent"] is True
+
+
+@pytest.mark.asyncio
 async def test_data_tools_refuse_before_verification(server):
     for tool, args in [("get_timecard", {}), ("get_pay_results", {}), ("get_absence_balances", {}),
                        ("get_open_cases", {}), ("resolve_short_pay", {"option": "next_check"}),

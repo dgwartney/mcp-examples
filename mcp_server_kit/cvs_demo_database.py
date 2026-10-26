@@ -659,8 +659,15 @@ class CvsDemoDatabase:
             rows = conn.execute("SELECT * FROM cases WHERE emplid=? AND state NOT IN ('resolved', 'closed') "
                                 "ORDER BY case_id", (digits,)).fetchall()
         cases = [self._case_dict(r) for r in rows]
-        return {"emplid_last4": digits[-4:], "count": len(cases), "cases": cases,
-                "case_ids": [c["case_id"] for c in cases]}
+        result = {"emplid_last4": digits[-4:], "count": len(cases), "cases": cases,
+                  "case_ids": [c["case_id"] for c in cases]}
+        # The oldest open case, flattened so a FLOW can read it without array indexing.
+        if cases:
+            first = cases[0]
+            result.update({"primary_case_id": first["case_id"], "primary_case_weekday": first["opened_weekday"],
+                           "primary_case_team": first["team"],
+                           "primary_case_topic": first["summary"][:1].lower() + first["summary"][1:]})
+        return result
 
     def create_case(self, emplid: str, team: str, summary: str, restricted: Any = False,
                     case_type: str = "") -> dict:

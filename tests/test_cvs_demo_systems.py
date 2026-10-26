@@ -105,6 +105,8 @@ async def test_scenario_1_end_to_end(server, db):
     cases = await call(server, "get_open_cases", emplid=JEFF)
     assert cases["case_ids"] == ["HRC0098561"]
     assert cases["cases"][0]["opened_on"] == "2026-10-25" and cases["cases"][0]["opened_weekday"] == "Sunday"
+    assert (cases["primary_case_id"], cases["primary_case_weekday"], cases["primary_case_topic"]) == (
+        "HRC0098561", "Sunday", "dental enrollment question")
 
     pay_case = await call(server, "create_case", emplid=JEFF, team="Payroll",
                           summary="22 h unapproved for period ending 2026-10-03; EMPLID 2217203")

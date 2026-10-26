@@ -250,12 +250,12 @@ class TestDroppedCall:
         # First call: one sentence, a checkpoint by ANI, then the drop before verification.
         first = await call(server, "save_call_context", ani=self.ANI, summary="Says the October paycheck was short",
                            intents="pay_issue")
-        assert first["keyed_on"] == ["emplid", "ani"] and first["context_id"] == "1"
+        assert first["keyed_on"] == ["emplid", "ani"] and len(first["context_id"]) >= 16
 
         # Callback: the new call's own checkpoint is skipped; the ANI gives only enough to greet.
         own = await call(server, "save_call_context", ani=self.ANI, summary="I got cut off")
         ctx = await call(server, "get_call_context", ani="3125550142", exclude_context_id=own["context_id"])
-        assert ctx["found"] is True and ctx["context_id"] == "1"
+        assert ctx["found"] is True and "context_id" not in ctx
         assert (ctx["first_name"], ctx["mobile_last4"]) == ("Jeff", "4417")
         assert ctx["verified_required"] is True and "summary" not in ctx and "emplid_last4" not in ctx
         assert (await call(server, "send_otp", ani=self.ANI))["mobile_last4"] == "4417"
@@ -274,7 +274,7 @@ class TestDroppedCall:
         own = db.save_call_context(ani="+13125550999", summary="calling back")
         assert db.get_call_context(ani="+13125550999", exclude_context_id=own["context_id"]) == {"found": False}
         ctx = db.get_call_context(emplid=JEFF, ani="+13125550999", exclude_context_id=own["context_id"])
-        assert ctx["context_id"] == first["context_id"] and ctx["summary_verified"] is True
+        assert ctx["summary"] == "pay short" and ctx["summary_verified"] is True
         assert ctx["open_case_ids"] == ["HRC0098561"] and ctx["pay_case_id"] == "HRC0098562"
 
     def test_fresh_call_does_not_recall_itself(self, db):
@@ -294,6 +294,27 @@ class TestDroppedCall:
         assert ctx["cr_case_id"] == "HRC0098563" and ctx["absence_request"] == "3 days PTO"
         db.save_call_context(context_id=first["context_id"], summary="")
         assert db.get_call_context(emplid=JEFF)["summary"] == "first"
+
+    def test_other_colleagues_checkpoint_is_not_returned(self, db):
+        """An ANI-matched checkpoint tied to another EMPLID never reaches this colleague."""
+        with db._conn() as conn:
+            conn.execute("INSERT INTO colleagues VALUES ('3300001', 'Ana', 'Ana P.', '1990-01-01', '+15550100001', "
+                         "'Tech', '6218', 'Roberta L.', 'Dana K.')")
+        db.verify_emplid_dob("3300001", "1990-01-01")
+        db.save_call_context(emplid="3300001", ani="+13125550142", summary="Ana's private matter")
+        verify(db)
+        assert db.get_call_context(emplid=JEFF, ani="+13125550142") == {"found": False}
+
+    def test_context_token_cannot_move_to_another_colleague(self, db):
+        with db._conn() as conn:
+            conn.execute("INSERT INTO colleagues VALUES ('3300001', 'Ana', 'Ana P.', '1990-01-01', '+15550100001', "
+                         "'Tech', '6218', 'Roberta L.', 'Dana K.')")
+        db.verify_emplid_dob("3300001", "1990-01-01")
+        ana = db.save_call_context(emplid="3300001", summary="Ana")
+        verify(db)
+        r = db.save_call_context(emplid=JEFF, summary="Jeff", context_id=ana["context_id"])
+        assert r["error"] == "context_mismatch"
+        assert db.save_call_context(emplid=JEFF, context_id="not-a-token")["context_id"] != "not-a-token"
 
     def test_recall_window(self, db, monkeypatch):
         db.save_call_context(ani="+13125550142", summary="x")

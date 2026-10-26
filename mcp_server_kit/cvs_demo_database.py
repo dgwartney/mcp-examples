@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS otps (emplid TEXT PRIMARY KEY, code_hash TEXT, expire
 CREATE TABLE IF NOT EXISTS call_context (
     id INTEGER PRIMARY KEY AUTOINCREMENT, emplid TEXT, ani TEXT, summary TEXT, intents TEXT,
     open_case_ids TEXT, pay_case_id TEXT, cr_case_id TEXT, absence_request TEXT, updated_at TEXT,
-    summary_verified INTEGER DEFAULT 0);
+    summary_verified INTEGER DEFAULT 0, token TEXT);
 CREATE TABLE IF NOT EXISTS audit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT, tool TEXT, args TEXT, result TEXT, at TEXT, status TEXT);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -253,6 +253,8 @@ class CvsDemoDatabase:
             columns = {r["name"] for r in conn.execute("PRAGMA table_info(call_context)")}
             if "summary_verified" not in columns:  # files created before 2026-10-26
                 conn.execute("ALTER TABLE call_context ADD COLUMN summary_verified INTEGER DEFAULT 0")
+            if "token" not in columns:
+                conn.execute("ALTER TABLE call_context ADD COLUMN token TEXT")
             if conn.execute("SELECT 1 FROM colleagues").fetchone() is None:
                 self._seed(conn)
 
@@ -725,20 +727,25 @@ class CvsDemoDatabase:
     # ------------------------------------------------------------ call context
 
     def _recent_context(self, conn: sqlite3.Connection, emplid: str = "", ani: str = "",
-                        exclude_id: int = 0) -> Optional[sqlite3.Row]:
-        """Most recent checkpoint in the recall window matching the EMPLID or the ANI, skipping ``exclude_id``."""
+                        exclude_token: str = "") -> Optional[sqlite3.Row]:
+        """
+        Most recent checkpoint in the recall window matching the EMPLID or the
+        ANI, skipping this call's own (``exclude_token``). With an EMPLID, an
+        ANI match counts only when that checkpoint isn't tied to another colleague.
+        """
         since = _iso(_utcnow() - timedelta(minutes=RECALL_WINDOW_MINUTES))
         keys, params = [], []
         if emplid:
             keys.append("emplid=?")
             params.append(emplid)
         if ani:
-            keys.append("ani=?")
-            params.append(ani)
+            keys.append("(ani=? AND (emplid='' OR emplid=?))" if emplid else "ani=?")
+            params.extend([ani, emplid] if emplid else [ani])
         if not keys:
             return None
-        return conn.execute(f"SELECT * FROM call_context WHERE ({' OR '.join(keys)}) AND updated_at>=? AND id!=? "
-                            "ORDER BY updated_at DESC, id DESC LIMIT 1", (*params, since, exclude_id)).fetchone()
+        return conn.execute(f"SELECT * FROM call_context WHERE ({' OR '.join(keys)}) AND updated_at>=? "
+                            "AND COALESCE(token, '')!=? ORDER BY updated_at DESC, id DESC LIMIT 1",
+                            (*params, since, exclude_token or "-")).fetchone()
 
     def save_call_context(self, emplid: str = "", ani: str = "", summary: str = "", intents: Any = None,
                           open_case_ids: Any = None, pay_case_id: str = "", cr_case_id: str = "",
@@ -752,7 +759,7 @@ class CvsDemoDatabase:
         """
         digits = rules.digits_only(emplid)
         number = normalize_e164(ani)
-        if not digits and not number and not str(context_id or "").strip():
+        if not digits and not number and not str(context_id or "").strip():  # nothing to key on
             return _err("no_key", "Nothing to key the call on yet.")
         if digits and not self.is_verified(digits):
             return _err("not_verified", "Context is saved by EMPLID only after verification.")
@@ -760,18 +767,20 @@ class CvsDemoDatabase:
                   "open_case_ids": json.dumps(coerce_list(open_case_ids)), "pay_case_id": pay_case_id or "",
                   "cr_case_id": cr_case_id or "", "absence_request": str(absence_request or "").strip()}
         empty = {"intents": "[]", "open_case_ids": "[]"}
-        cid = rules.digits_only(context_id)
+        token = str(context_id or "").strip()
         with self._conn() as conn:
             known = self._colleague_by_ani(conn, number) if number and not digits else None
             linked = digits or (known["emplid"] if known else "")
-            row = conn.execute("SELECT * FROM call_context WHERE id=?", (int(cid),)).fetchone() if cid else None
+            row = conn.execute("SELECT * FROM call_context WHERE token=?", (token,)).fetchone() if token else None
+            if row is not None and linked and row["emplid"] and row["emplid"] != linked:
+                return _err("context_mismatch", "That checkpoint belongs to another caller.")
             now = _iso(_utcnow())
             if row is None:
-                cur = conn.execute("INSERT INTO call_context (emplid, ani, summary, intents, open_case_ids, pay_case_id, "
-                                   "cr_case_id, absence_request, updated_at, summary_verified) "
-                                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                   (linked, number, *fields.values(), now, int(bool(digits and fields["summary"]))))
-                new_id = cur.lastrowid
+                token = secrets.token_urlsafe(12)
+                conn.execute("INSERT INTO call_context (emplid, ani, summary, intents, open_case_ids, pay_case_id, "
+                             "cr_case_id, absence_request, updated_at, summary_verified, token) "
+                             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                             (linked, number, *fields.values(), now, int(bool(digits and fields["summary"])), token))
             else:
                 merged = {k: (v if v and v != empty.get(k) else row[k]) for k, v in fields.items()}
                 summary_verified = int(bool(digits and fields["summary"])) or (
@@ -781,8 +790,7 @@ class CvsDemoDatabase:
                              "WHERE id=?",
                              (linked or row["emplid"], number or row["ani"], *merged.values(), now,
                               summary_verified, row["id"]))
-                new_id = row["id"]
-        return {"saved": True, "context_id": str(new_id),
+        return {"saved": True, "context_id": token,
                 "keyed_on": [k for k, v in (("emplid", linked), ("ani", number)) if v]}
 
     def get_call_context(self, ani: str = "", emplid: str = "", exclude_context_id: Any = "") -> dict:
@@ -795,11 +803,11 @@ class CvsDemoDatabase:
         """
         digits = rules.digits_only(emplid)
         number = normalize_e164(ani)
-        exclude = int(rules.digits_only(exclude_context_id) or 0)
         with self._conn() as conn:
             if digits and not self.is_verified(digits):
                 return _err("not_verified", "I need to verify you before I can look at that.")
-            row = self._recent_context(conn, emplid=digits, ani=number, exclude_id=exclude)
+            row = self._recent_context(conn, emplid=digits, ani=number,
+                                       exclude_token=str(exclude_context_id or "").strip())
             colleague = None
             if row is not None:
                 colleague = (self._colleague(conn, row["emplid"]) if row["emplid"]
@@ -807,7 +815,7 @@ class CvsDemoDatabase:
         if row is None:
             return {"found": False}
         minutes = int((_utcnow() - datetime.fromisoformat(row["updated_at"])).total_seconds() // 60)
-        result = {"found": True, "context_id": str(row["id"]), "minutes_ago": minutes,
+        result = {"found": True, "minutes_ago": minutes,
                   "verified_required": not digits,
                   "first_name": colleague["first_name"] if colleague else "",
                   "mobile_last4": _last4(colleague["mobile"]) if colleague else ""}

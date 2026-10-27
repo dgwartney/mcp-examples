@@ -57,6 +57,7 @@ OTP_TTL_SECONDS = 300
 OTP_MAX_TRIES = 3
 VERIFICATION_TTL_MINUTES = 120
 RECALL_WINDOW_MINUTES = 30
+HANDOFF_WINDOW_MINUTES = 20
 FIRST_CASE_SEQ = 98562
 FIRST_TIME_OFF_SEQ = 410221
 
@@ -129,7 +130,7 @@ CREATE TABLE IF NOT EXISTS time_off (
     hours REAL, created_at TEXT);
 CREATE TABLE IF NOT EXISTS cases (
     case_id TEXT PRIMARY KEY, emplid TEXT, team TEXT, case_type TEXT, summary TEXT,
-    restricted INTEGER, state TEXT, opened_on TEXT, notes TEXT);
+    restricted INTEGER, state TEXT, opened_on TEXT, notes TEXT, created_at TEXT);
 CREATE TABLE IF NOT EXISTS pay_resolutions (
     reference TEXT PRIMARY KEY, emplid TEXT, option TEXT, pay_date TEXT, hours REAL, created_at TEXT);
 CREATE TABLE IF NOT EXISTS verifications (emplid TEXT PRIMARY KEY, method TEXT, verified_at TEXT);
@@ -142,6 +143,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT, tool TEXT, args TEXT, result TEXT, at TEXT, status TEXT);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
+_CASE_COLUMNS = "case_id, emplid, team, case_type, summary, restricted, state, opened_on, notes"
 _DATA_TABLES = ("colleagues", "balances", "time_off", "cases", "pay_resolutions", "verifications",
                 "otps", "call_context", "audit_events", "meta")
 
@@ -279,6 +281,9 @@ class CvsDemoDatabase:
                 conn.execute("ALTER TABLE call_context ADD COLUMN summary_verified INTEGER DEFAULT 0")
             if "token" not in columns:
                 conn.execute("ALTER TABLE call_context ADD COLUMN token TEXT")
+            case_columns = {r["name"] for r in conn.execute("PRAGMA table_info(cases)")}
+            if "created_at" not in case_columns:  # files created before 2026-10-26
+                conn.execute("ALTER TABLE cases ADD COLUMN created_at TEXT")
             if conn.execute("SELECT 1 FROM colleagues").fetchone() is None:
                 self._seed(conn)
 
@@ -301,7 +306,7 @@ class CvsDemoDatabase:
                                                    "job_title", "store", "manager", "second_level_leader")))
             for kind, hours in BALANCES.items():
                 conn.execute("INSERT INTO balances VALUES (?, ?, ?)", (person["emplid"], kind, hours))
-            conn.execute("INSERT INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            conn.execute(f"INSERT INTO cases ({_CASE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                          (person["benefits_case"], person["emplid"], "Benefits", "benefits_question",
                           "Dental enrollment question", 0, "work_in_progress", opened.isoformat(), "[]"))
         for key, value in (("case_seq", FIRST_CASE_SEQ), ("time_off_seq", FIRST_TIME_OFF_SEQ),
@@ -720,10 +725,10 @@ class CvsDemoDatabase:
             if same is not None:
                 return {"created": False, "existing": True, **self._case_dict(same)}
             case_id = f"HRC{self._next(conn, 'case_seq'):07d}"
-            conn.execute("INSERT INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            conn.execute(f"INSERT INTO cases ({_CASE_COLUMNS}, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                          (case_id, digits, team_name, case_type or team_name.lower().replace(" ", "_"),
                           rules.mask_digit_runs(str(summary).strip(), keep=4), int(restricted), "new",
-                          as_of_date().isoformat(), "[]"))
+                          as_of_date().isoformat(), "[]", _iso(_utcnow())))
             row = conn.execute("SELECT * FROM cases WHERE case_id=?", (case_id,)).fetchone()
         return {"created": True, **self._case_dict(row)}
 
@@ -870,6 +875,103 @@ class CvsDemoDatabase:
                            "has_summary": bool(row["summary"]),
                            "summary_verified": bool(row["summary_verified"]),
                            "emplid_last4": row["emplid"][-4:] if row["emplid"] else ""})
+        return result
+
+    # ----------------------------------------------------------------- hand-off
+
+    def get_latest_handoff(self, within_minutes: Any = HANDOFF_WINDOW_MINUTES) -> dict:
+        """
+        The context of the most recent escalation, for the agent that takes a
+        transferred call (Sam, Colleague Relations). Read-only, derived from the
+        cases, pay resolutions and call checkpoints written during Savvy's call.
+
+        Single-demo-tenant shortcut: the transfer arrives with no EMPLID, so the
+        most recent escalation across all colleagues wins. The colleague is the
+        one with the newest Colleague Relations or Payroll case created in the
+        last ``within_minutes``; their Colleague Relations case, when there is
+        one, makes the reason ``colleague_relations``, else ``payroll``. With no
+        such case, the newest call checkpoint with a summary gives reason
+        ``other``. A real contact center would carry this context with the
+        transfer (SIP header / UUI) instead of looking it up.
+
+        Never returns the full EMPLID or a phone number; free text is masked.
+        """
+        try:
+            minutes = max(1, int(within_minutes))
+        except (TypeError, ValueError):
+            minutes = HANDOFF_WINDOW_MINUTES
+        now = _utcnow()
+        since = _iso(now - timedelta(minutes=minutes))
+        with self._conn() as conn:
+            def newest_case(team: str, emplid: str = "") -> Optional[sqlite3.Row]:
+                who = " AND emplid=?" if emplid else ""
+                return conn.execute(f"SELECT * FROM cases WHERE team=? AND created_at>=?{who} "
+                                    "ORDER BY created_at DESC, case_id DESC LIMIT 1",
+                                    (team, since, *([emplid] if emplid else []))).fetchone()
+
+            latest = conn.execute("SELECT * FROM cases WHERE team IN ('Colleague Relations', 'Payroll') "
+                                  "AND created_at>=? ORDER BY created_at DESC, case_id DESC LIMIT 1",
+                                  (since,)).fetchone()
+            if latest is not None:
+                emplid = latest["emplid"]
+                cr, pay = newest_case("Colleague Relations", emplid), newest_case("Payroll", emplid)
+                ctx = conn.execute("SELECT * FROM call_context WHERE emplid=? AND summary!='' AND updated_at>=? "
+                                   "ORDER BY updated_at DESC, id DESC LIMIT 1", (emplid, since)).fetchone()
+                anchor = max(r["created_at"] for r in (cr, pay) if r is not None)
+            else:
+                cr = pay = None
+                ctx = conn.execute("SELECT * FROM call_context WHERE summary!='' AND updated_at>=? "
+                                   "ORDER BY updated_at DESC, id DESC LIMIT 1", (since,)).fetchone()
+                if ctx is None:
+                    return {"found": False, "within_minutes": minutes,
+                            "display": "I don't see a recent hand-off."}
+                emplid, anchor = ctx["emplid"], ctx["updated_at"]
+            colleague = (self._colleague(conn, emplid) if emplid
+                         else self._colleague_by_ani(conn, ctx["ani"]) if ctx is not None else None)
+            resolution = (conn.execute("SELECT * FROM pay_resolutions WHERE emplid=?", (colleague["emplid"],))
+                          .fetchone() if colleague is not None else None)
+        reason = "colleague_relations" if cr else "payroll" if pay else "other"
+        first = colleague["first_name"] if colleague else ""
+        call_reason = rules.mask_digit_runs(ctx["summary"], keep=4) if ctx is not None else ""
+        concern = rules.mask_digit_runs(cr["summary"], keep=4) if cr is not None else ""
+        result = {
+            "found": True, "reason": reason, "first_name": first,
+            "colleague_name": colleague["display_name"] if colleague else "",
+            "emplid_last4": colleague["emplid"][-4:] if colleague else "",
+            "call_reason": call_reason,
+            "pay_case_id": pay["case_id"] if pay else "",
+            "pay_case_spoken": f"H R C {spoken_digits(pay['case_id'])}" if pay else "",
+            "cr_case_id": cr["case_id"] if cr else "",
+            "cr_case_spoken": f"H R C {spoken_digits(cr['case_id'])}" if cr else "",
+            "concern_summary": concern,
+            "pay_outcome": resolution["option"] if resolution else "", "pay_outcome_display": "",
+            "minutes_ago": int((now - datetime.fromisoformat(anchor)).total_seconds() // 60),
+            "within_minutes": minutes,
+        }
+        if resolution is not None:
+            how = ("on your next regular check" if resolution["option"] == "next_check"
+                   else "as an off-cycle payment")
+            result["pay_outcome_display"] = (
+                f"The {rules.hours_display_en(resolution['hours'])} will be paid {how} on "
+                f"{rules.date_display_en(date.fromisoformat(resolution['pay_date']))}.")
+        opener = f"{first}, you" if first else "You"
+        if pay is not None or cr is not None:
+            period = rules.date_display_en(PERIOD["end"]).split(", ", 1)[1]
+            parts = [f"{opener} just spoke with Savvy about your short check for the period ending {period}."]
+        else:  # a checkpoint is only chosen when it has a summary
+            parts = [f"{opener} just spoke with Savvy. The note from that call says: {call_reason.rstrip('.')}."]
+        if pay is not None and cr is not None:
+            parts.append(f"Payroll case {result['pay_case_spoken']} is open, and your confidential Colleague "
+                         f"Relations case {result['cr_case_spoken']} is open.")
+        elif cr is not None:
+            parts.append(f"Your confidential Colleague Relations case {result['cr_case_spoken']} is open.")
+        elif pay is not None:
+            parts.append(f"Payroll case {result['pay_case_spoken']} is open.")
+        if result["pay_outcome_display"]:
+            parts.append(result["pay_outcome_display"])
+        if concern:
+            parts.append(f"The case notes say: {concern.rstrip('.')}.")
+        result["display"] = " ".join(parts)
         return result
 
 

@@ -10,6 +10,7 @@ Author:
 """
 
 import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -79,7 +80,7 @@ async def test_lists_every_brief_tool(server):
         "verify_emplid_dob", "send_otp", "verify_otp", "get_timecard", "get_pay_results",
         "resolve_short_pay", "get_absence_balances", "list_absence_types", "submit_time_off",
         "get_open_cases", "create_case", "update_case", "send_sms", "save_call_context",
-        "get_call_context", "reset_demo",
+        "get_call_context", "get_latest_handoff", "reset_demo",
     }
 
 
@@ -680,3 +681,195 @@ class TestTwilioSender:
 
         monkeypatch.setattr(httpx, "Client", factory)
         assert twilio_sender("+1", "x") == {"sid": "SM2"} and made[0].is_closed
+
+
+# ---------------------------------------------------------------------------
+# Hand-off context for the transfer target (Sam, Colleague Relations)
+# ---------------------------------------------------------------------------
+
+class Clock:
+    """A controllable ``_utcnow`` so window and newest-wins checks are exact."""
+
+    def __init__(self, monkeypatch):
+        self.now = datetime(2026, 10, 27, 17, 0, tzinfo=timezone.utc)
+        monkeypatch.setattr(demo, "_utcnow", lambda: self.now)
+
+    def advance(self, minutes=0, seconds=0):
+        self.now += timedelta(minutes=minutes, seconds=seconds)
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    return Clock(monkeypatch)
+
+
+CR_SUMMARY = ("Colleague says Roberta L. approves timecards and everyone else on the team was approved; "
+              "colleague says they raised concerns with Dana K. a few weeks ago.")
+
+
+def jeff_escalation(db, clock):
+    """Savvy's Scenario 1 call: payroll case, next-check fix, then the confidential CR case."""
+    verify(db)
+    db.save_call_context(emplid=JEFF, ani="+15550104417", summary="Short check for the period ending October 3rd",
+                         intents="pay_issue")
+    pay = db.create_case(JEFF, "Payroll", "22 hours not approved before payroll closed")
+    db.resolve_short_pay(JEFF, "next_check")
+    clock.advance(minutes=2)
+    cr = db.create_case(JEFF, "Colleague Relations", CR_SUMMARY, restricted=True)
+    clock.advance(minutes=3)
+    return pay, cr
+
+
+class TestHandoff:
+
+    DAVE, MIKE = demo.TESTERS
+
+    @pytest.mark.asyncio
+    async def test_jeff_escalation_over_mcp(self, server, db, clock):
+        pay, cr = jeff_escalation(db, clock)
+        before = db.status()["counts"]
+        r = await call(server, "get_latest_handoff")
+        assert r["found"] is True and r["reason"] == "colleague_relations"
+        assert (r["first_name"], r["colleague_name"], r["emplid_last4"]) == ("Jeff", "Jeff M.", "7203")
+        assert r["pay_case_id"] == pay["case_id"] and r["cr_case_id"] == cr["case_id"]
+        assert r["pay_case_spoken"] == pay["case_id_spoken"] == "H R C zero zero nine, eight five six, two"
+        assert r["cr_case_spoken"] == cr["case_id_spoken"]
+        assert r["pay_outcome"] == "next_check"
+        assert r["pay_outcome_display"] == ("The 22 hours will be paid on your next regular check on "
+                                            "Friday, October 23rd.")
+        assert r["call_reason"] == "Short check for the period ending October 3rd"
+        assert r["concern_summary"] == CR_SUMMARY and r["minutes_ago"] == 3
+        assert r["display"] == (
+            "Jeff, you just spoke with Savvy about your short check for the period ending October 3rd. "
+            f"Payroll case {pay['case_id_spoken']} is open, and your confidential Colleague Relations case "
+            f"{cr['case_id_spoken']} is open. The 22 hours will be paid on your next regular check on "
+            "Friday, October 23rd. The case notes say: " + CR_SUMMARY.rstrip(".") + ".")
+        # Read-only: nothing changed except the audit row.
+        assert db.status()["counts"] == before
+        assert db.list_audit_events(1)[0]["tool"] == "get_latest_handoff"
+
+    def test_not_found(self, db, clock):
+        r = db.get_latest_handoff()
+        assert r == {"found": False, "within_minutes": 20, "display": "I don't see a recent hand-off."}
+
+    def test_other_team_cases_are_never_a_handoff(self, db, clock):
+        verify(db)
+        db.create_case(JEFF, "Benefits", "Dental question")
+        assert db.get_latest_handoff()["found"] is False
+
+    def test_window_boundary(self, db, clock):
+        verify(db)
+        db.create_case(JEFF, "Payroll", "short check")
+        clock.advance(minutes=20)
+        r = db.get_latest_handoff()
+        assert r["found"] is True and r["minutes_ago"] == 20  # exactly 20 minutes: still in
+        clock.advance(seconds=1)
+        assert db.get_latest_handoff()["found"] is False
+        assert db.get_latest_handoff(within_minutes=30)["found"] is True
+        assert db.get_latest_handoff(within_minutes="bad")["within_minutes"] == 20
+        assert db.get_latest_handoff(within_minutes=0)["within_minutes"] == 1
+
+    def test_cr_case_preferred_over_payroll(self, db, clock):
+        verify(db)
+        cr = db.create_case(JEFF, "Colleague Relations", CR_SUMMARY)
+        clock.advance(minutes=1)
+        pay = db.create_case(JEFF, "Payroll", "short check")  # newer, but the CR case still sets the reason
+        r = db.get_latest_handoff()
+        assert r["reason"] == "colleague_relations" and r["cr_case_id"] == cr["case_id"]
+        assert r["pay_case_id"] == pay["case_id"] and r["minutes_ago"] == 0
+
+    def test_cr_only(self, db, clock):
+        verify(db)
+        cr = db.create_case(JEFF, "Colleague Relations", CR_SUMMARY)
+        r = db.get_latest_handoff()
+        assert r["reason"] == "colleague_relations" and r["pay_case_id"] == r["pay_case_spoken"] == ""
+        assert f"Your confidential Colleague Relations case {cr['case_id_spoken']} is open." in r["display"]
+        assert r["pay_outcome"] == r["pay_outcome_display"] == "" and r["call_reason"] == ""
+
+    def test_payroll_only(self, db, clock):
+        verify(db)
+        pay = db.create_case(JEFF, "Payroll", "22 hours not approved")
+        db.resolve_short_pay(JEFF, "off_cycle")
+        r = db.get_latest_handoff()
+        assert r["reason"] == "payroll" and r["cr_case_id"] == r["cr_case_spoken"] == ""
+        assert r["concern_summary"] == "" and r["pay_outcome"] == "off_cycle"
+        assert r["display"].startswith("Jeff, you just spoke with Savvy about your short check")
+        assert f"Payroll case {pay['case_id_spoken']} is open." in r["display"]
+        assert "as an off-cycle payment" in r["display"] and "Colleague Relations" not in r["display"]
+
+    def test_call_context_only_fallback(self, db, clock):
+        verify(db)
+        db.save_call_context(emplid=JEFF, summary="Asked how to request time off.")
+        db.save_call_context(ani="+15550109999")  # no summary: never chosen
+        r = db.get_latest_handoff()
+        assert r["found"] is True and r["reason"] == "other" and r["first_name"] == "Jeff"
+        assert r["call_reason"] == "Asked how to request time off."
+        assert r["pay_case_id"] == r["cr_case_id"] == ""
+        assert r["display"] == ("Jeff, you just spoke with Savvy. The note from that call says: "
+                                "Asked how to request time off.")
+
+    def test_call_context_from_unknown_number(self, db, clock):
+        db.save_call_context(ani="+15550109999", summary="Hung up before giving an ID")
+        r = db.get_latest_handoff()
+        assert r["reason"] == "other" and r["first_name"] == "" and r["emplid_last4"] == ""
+        assert r["display"].startswith("You just spoke with Savvy.")
+
+    def test_old_call_context_is_ignored(self, db, clock):
+        verify(db)
+        db.save_call_context(emplid=JEFF, summary="pay short")
+        clock.advance(minutes=21)
+        assert db.get_latest_handoff()["found"] is False
+
+    def test_masking(self, db, clock):
+        verify(db)
+        db.save_call_context(emplid=JEFF, ani="+15550104417",
+                             summary="Jeff 2217203 can be reached at 555-010-4417")
+        db.create_case(JEFF, "Payroll", "EMPLID 2217203 short check")
+        db.create_case(JEFF, "Colleague Relations", "Call back at +1 555 010 4417 about Dana K.")
+        r = db.get_latest_handoff()
+        flat = json.dumps(r)
+        assert JEFF not in flat and "5550104417" not in flat and "010-4417" not in flat
+        assert "010 4417" not in flat and r["emplid_last4"] == "7203"
+        assert "emplid" not in r and not any("mobile" in k or "phone" in k for k in r)
+
+    def test_newest_colleague_wins(self, db, clock):
+        verify(db)
+        db.verify_emplid_dob(self.DAVE["emplid"], self.DAVE["dob"])
+        db.verify_emplid_dob(self.MIKE["emplid"], self.MIKE["dob"])
+        db.create_case(JEFF, "Colleague Relations", CR_SUMMARY)
+        clock.advance(minutes=1)
+        db.create_case(self.DAVE["emplid"], "Payroll", "short check")
+        clock.advance(minutes=1)
+        r = db.get_latest_handoff()
+        assert (r["first_name"], r["reason"]) == ("Dave", "payroll")
+        assert r["emplid_last4"] == self.DAVE["emplid"][-4:] and r["cr_case_id"] == ""
+        # Dave's call context and Jeff's pay resolution never leak into Mike's hand-off.
+        db.save_call_context(emplid=self.DAVE["emplid"], summary="Dave's pay question")
+        db.resolve_short_pay(JEFF, "next_check")
+        clock.advance(minutes=1)
+        mike_cr = db.create_case(self.MIKE["emplid"], "Colleague Relations", "Mike reported his leader")
+        r = db.get_latest_handoff()
+        assert (r["first_name"], r["reason"], r["cr_case_id"]) == ("Mike", "colleague_relations", mike_cr["case_id"])
+        assert r["call_reason"] == "" and r["pay_outcome"] == "" and r["pay_case_id"] == ""
+        clock.advance(minutes=1)
+        db.create_case(JEFF, "Payroll", "short check")
+        assert db.get_latest_handoff()["first_name"] == "Jeff"
+
+    @pytest.mark.asyncio
+    async def test_reset_demo_clears_it(self, server, db, clock):
+        jeff_escalation(db, clock)
+        assert (await call(server, "get_latest_handoff"))["found"] is True
+        await call(server, "reset_demo")
+        assert (await call(server, "get_latest_handoff"))["found"] is False
+
+    def test_existing_file_gains_created_at(self, tmp_path):
+        path = str(tmp_path / "old.db")
+        conn = sqlite3.connect(path)
+        conn.execute("CREATE TABLE cases (case_id TEXT PRIMARY KEY, emplid TEXT, team TEXT, case_type TEXT, "
+                     "summary TEXT, restricted INTEGER, state TEXT, opened_on TEXT, notes TEXT)")
+        conn.commit()
+        conn.close()
+        db = open_database(path)
+        with db._conn() as c:
+            assert "created_at" in {r["name"] for r in c.execute("PRAGMA table_info(cases)")}
+        assert db.get_latest_handoff()["found"] is False

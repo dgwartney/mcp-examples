@@ -4,7 +4,10 @@ Mock CVS demo systems for Phase 2 (MCP prefix ``cvs_demo_systems``).
 One server answers for Workday and ServiceNow in CVS's two Phase 2 demo
 scenarios: identity (EMPLID + date of birth, SMS one-time code), timecard and
 pay results, absence balances and time off, HR cases, SMS, and the call
-checkpoint that lets a dropped call resume. Thin adapter over
+checkpoint that lets a dropped call resume. ``get_latest_handoff`` (read-only)
+gives the transfer target (Sam, Colleague Relations) the context of the most
+recent escalation; it is a single-demo-tenant shortcut, since a real contact
+center carries that context with the transfer (SIP header / UUI). Thin adapter over
 ``cvs_demo_database.CvsDemoDatabase``; every call writes one audit row.
 
 ``reset_demo`` is exposed for operators (``agents/cvs-phase2/scripts/demo-reset.sh``)
@@ -246,6 +249,26 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
             """
             args = dict(ani=ani, emplid=emplid, exclude_context_id=exclude_context_id)
             return run("get_call_context", args, lambda: db.get_call_context(ani, emplid, exclude_context_id))
+
+        @self.mcp.tool(description=(
+            "Read-only. For the agent that takes a transferred call: the context of the most recent "
+            "escalation in the last within_minutes (default 20), with no input needed. Returns the "
+            "colleague's first name, the reason (colleague_relations | payroll | other), the open Payroll "
+            "and confidential Colleague Relations case numbers (spoken), the pay outcome, the concern "
+            "summary and a display line to open the call. found=false when there is no recent hand-off."))
+        def get_latest_handoff(within_minutes: int = 20) -> dict:
+            """
+            Single-demo-tenant shortcut: the transfer carries no EMPLID, so the most recent
+            escalation across all colleagues wins. A real contact center carries this context
+            with the transfer (SIP header / UUI). Never returns the full EMPLID or a phone number.
+
+            Returns:
+                found, reason, first_name, colleague_name, emplid_last4, call_reason, pay_case_id,
+                pay_case_spoken, pay_outcome, pay_outcome_display, cr_case_id, cr_case_spoken,
+                concern_summary, minutes_ago, within_minutes, display.
+            """
+            return run("get_latest_handoff", dict(within_minutes=within_minutes),
+                       lambda: db.get_latest_handoff(within_minutes))
 
         @self.mcp.tool(description=(
             "Admin only, never for callers: re-seed the demo data (status_only=true just reports). "

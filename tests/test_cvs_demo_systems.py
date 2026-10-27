@@ -723,7 +723,7 @@ def peek(db, **kw):
 def jeff_escalation(db, clock):
     """Savvy's Scenario 1 call: payroll case, next-check fix, then the confidential CR case."""
     verify(db)
-    db.save_call_context(emplid=JEFF, ani="+15550104417", summary="Short check for the period ending October 3rd",
+    db.save_call_context(emplid=JEFF, ani="+15550104417", summary="Short check for the last pay period",
                          intents="pay_issue")
     pay = db.create_case(JEFF, "Payroll", "22 hours not approved before payroll closed")
     db.resolve_short_pay(JEFF, "next_check")
@@ -737,6 +737,14 @@ def jeff_escalation(db, clock):
 class TestHandoff:
 
     DAVE, MIKE = demo.TESTERS
+
+    @pytest.mark.asyncio
+    async def test_tool_takes_no_arguments(self, desk):
+        async with Client(desk.mcp) as client:
+            (tool,) = await client.list_tools()
+        assert tool.inputSchema.get("properties", {}) == {} and not tool.inputSchema.get("required")
+        with pytest.raises(Exception):
+            await call(desk, "get_latest_handoff", within_minutes=100000)
 
     @pytest.mark.asyncio
     async def test_tool_lives_only_on_the_desk_server(self, server, desk):
@@ -758,7 +766,7 @@ class TestHandoff:
         assert r["pay_outcome"] == "next_check"
         assert r["pay_outcome_display"] == ("The 22 hours will be paid on your next regular check on "
                                             "Friday, October 23rd.")
-        assert r["call_reason"] == "Short check for the period ending October 3rd"
+        assert r["call_reason"] == "Short check for the last pay period"
         assert r["concern_summary"] == CR_SUMMARY and r["minutes_ago"] == 3  # first sentence only
         assert r["display"] == (
             "Jeff, you just spoke with Savvy about your short check for the period ending October 3rd. "
@@ -797,9 +805,12 @@ class TestHandoff:
         assert r["found"] is True and r["minutes_ago"] == 10  # exactly 10 minutes: still in
         clock.advance(seconds=1)
         assert peek(db)["found"] is False
-        assert peek(db, within_minutes=30)["found"] is True
-        assert peek(db, within_minutes="bad")["within_minutes"] == 10
+        # The window can be narrowed (tests) but never widened.
+        for wide in (30, 10 ** 9, float("inf"), "bad", None, "9" * 400):
+            r = peek(db, within_minutes=wide)
+            assert r["found"] is False and r["within_minutes"] == 10, wide
         assert peek(db, within_minutes=0)["within_minutes"] == 1
+        assert peek(db, within_minutes=-5)["within_minutes"] == 1
 
     def test_only_a_recently_verified_colleague_qualifies(self, db, clock):
         verify(db)
@@ -807,7 +818,7 @@ class TestHandoff:
         db.create_case(JEFF, "Colleague Relations", CR_SUMMARY)
         db.save_call_context(emplid=JEFF, summary="pay short")
         assert peek(db)["found"] is False
-        assert peek(db, within_minutes=15)["found"] is True
+        assert peek(db, within_minutes=15)["found"] is False  # can't widen past 10
         verify(db)  # re-verified now
         assert peek(db)["found"] is True
 
@@ -926,11 +937,22 @@ class TestHandoff:
 def test_handoff_text():
     assert handoff_text("Talked to Dana K. last week. Then more.") == "Talked to Dana K. last week."
     assert handoff_text("  no   end punctuation ") == "no end punctuation"
-    assert handoff_text("DOB 1991-03-14 and 3/14/91 and Mar 14th 1991.") == "DOB a date and a date and a date."
-    assert handoff_text("Call 312-555-0142.") == "Call ******0142."
+    assert handoff_text("Call 312-555-0142.") == "Call a number."
+    assert handoff_text("22 hours, the 14th of March.") == "a number hours, the a date."
+    assert handoff_text("Cases HRC0098563 and hrc0098562 are open.") == "Cases HRC0098563 and HRC0098562 are open."
     cut = handoff_text("word " * 100)
     assert len(cut) <= demo.HANDOFF_TEXT_MAX and cut.endswith("word.")
     assert handoff_text("") == ""
+
+
+@pytest.mark.parametrize("dob", [
+    "14 March 1991", "March 14th, 1991", "March 14 1991", "Mar. 14, 1991", "14th of March 1991",
+    "3.14.1991", "03/14/1991", "3-14-91", "1991-03-14", "1991", "03141991", "19910314", "3 14 1991",
+])
+def test_handoff_text_never_leaks_a_date_of_birth(dob):
+    out = handoff_text(f"Colleague (born {dob}) says HRC0098563 is about Dana K. and 2217203.")
+    assert not any(c.isdigit() for c in out.replace("HRC0098563", "")), out
+    assert "March" not in out and "Mar." not in out and "HRC0098563" in out
 
 
 class TestDeskKey:

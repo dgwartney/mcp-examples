@@ -38,7 +38,7 @@ import httpx
 from starlette.middleware import Middleware as StarletteMiddleware
 
 from mcp_server_kit.base import AuthenticatedMCPServer, lazy_module_instances
-from mcp_server_kit.cvs_demo_database import HANDOFF_WINDOW_MINUTES, open_database
+from mcp_server_kit.cvs_demo_database import open_database
 from mcp_server_kit.middleware import ApiKeyMiddleware
 
 DESK_API_KEY_ENV = "CVS_DEMO_DESK_API_KEY"
@@ -316,12 +316,12 @@ class CvsDemoDeskMCPServer(AuthenticatedMCPServer):
 
         @self.mcp.tool(description=(
             "For the agent that takes a transferred call: the context of the most recent escalation from a "
-            "colleague verified in the last within_minutes (default 10), with no input needed. Returned once: "
+            "colleague verified in the last 10 minutes. Takes no arguments. Returned once: "
             "a second call gets found=false. Gives the colleague's first name, the reason "
             "(colleague_relations | payroll | other), the open Payroll and confidential Colleague Relations "
             "case numbers (spoken), the pay outcome, a one-sentence concern summary and a display line to "
             "open the call."))
-        def get_latest_handoff(within_minutes: int = HANDOFF_WINDOW_MINUTES) -> dict:
+        def get_latest_handoff() -> dict:
             """
             Demo shortcut: the demo transfer carries no EMPLID, so the most recent escalation in the
             single demo tenant wins. In production the context travels with the call (SIP header /
@@ -333,8 +333,7 @@ class CvsDemoDeskMCPServer(AuthenticatedMCPServer):
                 pay_case_spoken, pay_outcome, pay_outcome_display, cr_case_id, cr_case_spoken,
                 concern_summary, minutes_ago, within_minutes, display.
             """
-            return db.audited("get_latest_handoff", dict(within_minutes=within_minutes),
-                              lambda: db.get_latest_handoff(within_minutes))
+            return db.audited("get_latest_handoff", {}, db.get_latest_handoff)
 
 
 __getattr__ = lazy_module_instances(CvsDemoSystemsMCPServer)

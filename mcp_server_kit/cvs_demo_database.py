@@ -901,10 +901,10 @@ class CvsDemoDatabase:
         - A hand-off is returned once: the first read marks it consumed
           (``handoffs_consumed``) and every later read gets ``found: false``
           until a newer escalation arrives or ``reset`` clears it.
-        - Free text (``call_reason``, ``concern_summary``) is cut to its first
-          sentence, at most ``HANDOFF_TEXT_MAX`` characters, with digit runs
-          and dates masked. The full EMPLID, phone numbers and the date of
-          birth are never returned.
+        - Free text (``call_reason``, ``concern_summary``) keeps no digits but
+          HR case IDs and no month-and-day dates (see :func:`handoff_text`), is
+          cut to its first sentence and at most ``HANDOFF_TEXT_MAX`` characters.
+          The full EMPLID, phone numbers and the date of birth are never returned.
 
         Which escalation: the verified colleague with the newest Colleague
         Relations or Payroll case in the window; their Colleague Relations case,
@@ -913,13 +913,14 @@ class CvsDemoDatabase:
         summary from a verified colleague gives reason ``other``.
 
         Args:
-            within_minutes: the window, in minutes (minimum 1).
+            within_minutes: tests only; clamped to 1..``HANDOFF_WINDOW_MINUTES`` (the MCP
+                tool takes no arguments, so callers can never widen the window).
             consume: mark the hand-off picked up (the MCP tool always does;
                 False is for tests and operator diagnostics only).
         """
         try:
-            minutes = max(1, int(within_minutes))
-        except (TypeError, ValueError):
+            minutes = min(HANDOFF_WINDOW_MINUTES, max(1, int(within_minutes)))
+        except (TypeError, ValueError, OverflowError):
             minutes = HANDOFF_WINDOW_MINUTES
         now = _utcnow()
         since = _iso(now - timedelta(minutes=minutes))
@@ -998,24 +999,36 @@ class CvsDemoDatabase:
 
 _SENTENCE_END = re.compile(r"(?<!\b[A-Z])[.!?](?=\s|$)")  # "Dana K. said" is one sentence
 _MONTHS = ("january|february|march|april|may|june|july|august|september|october|november|december|"
-           "jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec")
-_DATE_LIKE = re.compile(
-    rf"\b\d{{1,4}}[/-]\d{{1,2}}[/-]\d{{1,4}}\b|\b(?:{_MONTHS})\.?\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+\d{{4}}\b",
+           "sept|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec")
+_ORD = r"(?:st|nd|rd|th)?"
+_YEAR = r"(?:,?\s+\d{4})?"
+_MONTH_DAY = re.compile(
+    rf"\b(?:{_MONTHS})\.?\s+\d{{1,2}}{_ORD}\b{_YEAR}"          # March 14th, 1991
+    rf"|\b\d{{1,2}}{_ORD}\s+(?:of\s+)?(?:{_MONTHS})\b{_YEAR}",  # 14 March 1991, 14th of March
     re.IGNORECASE)
+_CASE_ID = re.compile(r"\bHRC\d{7}\b", re.IGNORECASE)
+_DIGIT_RUN = re.compile(r"\d+(?:[\s./,\-]+\d+)*(?:st|nd|rd|th)?\b", re.IGNORECASE)
 
 
 def handoff_text(text: str, limit: Optional[int] = None) -> str:
     """
-    Free text made safe to hand to another agent: the first sentence only, at
-    most ``HANDOFF_TEXT_MAX`` characters (cut at a word), full dates such as a
-    date of birth replaced with "a date", and digit runs masked to the last 4.
+    Free text made safe to hand to another agent. HR case IDs (``HRC`` + 7
+    digits) are kept; every month-and-day date becomes "a date" and every
+    other digit run (EMPLIDs, phone numbers, years, numeric dates in any
+    separator) becomes "a number", so no form of a date of birth survives.
+    Then the first sentence only, at most ``HANDOFF_TEXT_MAX`` characters
+    (cut at a word).
     """
     limit = limit or HANDOFF_TEXT_MAX
     text = " ".join(str(text or "").split())
+    kept = _CASE_ID.findall(text)
+    text = _CASE_ID.sub("\x00", text)
+    text = _DIGIT_RUN.sub("a number", _MONTH_DAY.sub("a date", text))
+    for case_id in kept:
+        text = text.replace("\x00", case_id.upper(), 1)
     end = _SENTENCE_END.search(text)
     if end:
         text = text[:end.end()]
-    text = rules.mask_digit_runs(_DATE_LIKE.sub("a date", text), keep=4)
     if len(text) > limit:
         text = text[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "."
     return text

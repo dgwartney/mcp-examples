@@ -4,14 +4,17 @@ Mock CVS demo systems for Phase 2 (MCP prefix ``cvs_demo_systems``).
 One server answers for Workday and ServiceNow in CVS's two Phase 2 demo
 scenarios: identity (EMPLID + date of birth, SMS one-time code), timecard and
 pay results, absence balances and time off, HR cases, SMS, and the call
-checkpoint that lets a dropped call resume. ``get_latest_handoff`` (read-only)
-gives the transfer target (Sam, Colleague Relations) the context of the most
-recent escalation; it is a single-demo-tenant shortcut, since a real contact
-center carries that context with the transfer (SIP header / UUI). Thin adapter over
+checkpoint that lets a dropped call resume. Thin adapter over
 ``cvs_demo_database.CvsDemoDatabase``; every call writes one audit row.
 
 ``reset_demo`` is exposed for operators (``agents/cvs-phase2/scripts/demo-reset.sh``)
 and is never bound to an agent.
+
+A second server, :class:`CvsDemoDeskMCPServer` (MCP prefix ``cvs_demo_desk``),
+carries only ``get_latest_handoff`` for the transfer target (Sam, Colleague
+Relations), on its own path and optionally its own API key. That lookup is a
+demo shortcut: in production the context travels with the call, in the SIP
+header / UUI or through the CCaaS API keyed to that call.
 
 Author:
     David Gwartney <david.gwartney@gmail.com>
@@ -19,18 +22,26 @@ Author:
 Environment Variables:
     TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_MESSAGING_SERVICE_SID:
         Real SMS delivery when the demo's SMS switch is on (see ``reset_demo``).
+    CVS_DEMO_DESK_API_KEY:
+        Optional. When set, ``/cvs_demo_desk/mcp`` accepts only this key; when
+        unset it accepts the shared keys in ``MCP_DB_PATH`` like every other server.
 
 Example:
     $ uv run -m mcp_server_kit.cvs_demo_systems --transport streamable-http --port 8017
 """
 
 import os
+import secrets
 from typing import Optional
 
 import httpx
+from starlette.middleware import Middleware as StarletteMiddleware
 
 from mcp_server_kit.base import AuthenticatedMCPServer, lazy_module_instances
-from mcp_server_kit.cvs_demo_database import open_database
+from mcp_server_kit.cvs_demo_database import HANDOFF_WINDOW_MINUTES, open_database
+from mcp_server_kit.middleware import ApiKeyMiddleware
+
+DESK_API_KEY_ENV = "CVS_DEMO_DESK_API_KEY"
 
 _TWILIO_BASE = "https://api.twilio.com/2010-04-01"
 
@@ -251,26 +262,6 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
             return run("get_call_context", args, lambda: db.get_call_context(ani, emplid, exclude_context_id))
 
         @self.mcp.tool(description=(
-            "Read-only. For the agent that takes a transferred call: the context of the most recent "
-            "escalation in the last within_minutes (default 20), with no input needed. Returns the "
-            "colleague's first name, the reason (colleague_relations | payroll | other), the open Payroll "
-            "and confidential Colleague Relations case numbers (spoken), the pay outcome, the concern "
-            "summary and a display line to open the call. found=false when there is no recent hand-off."))
-        def get_latest_handoff(within_minutes: int = 20) -> dict:
-            """
-            Single-demo-tenant shortcut: the transfer carries no EMPLID, so the most recent
-            escalation across all colleagues wins. A real contact center carries this context
-            with the transfer (SIP header / UUI). Never returns the full EMPLID or a phone number.
-
-            Returns:
-                found, reason, first_name, colleague_name, emplid_last4, call_reason, pay_case_id,
-                pay_case_spoken, pay_outcome, pay_outcome_display, cr_case_id, cr_case_spoken,
-                concern_summary, minutes_ago, within_minutes, display.
-            """
-            return run("get_latest_handoff", dict(within_minutes=within_minutes),
-                       lambda: db.get_latest_handoff(within_minutes))
-
-        @self.mcp.tool(description=(
             "Admin only, never for callers: re-seed the demo data (status_only=true just reports). "
             "sms_enabled turns real SMS delivery on or off."))
         def reset_demo(status_only: bool = False, sms_enabled: Optional[bool] = None) -> dict:
@@ -282,6 +273,68 @@ class CvsDemoSystemsMCPServer(AuthenticatedMCPServer):
             if status_only:
                 return db.status()
             return run("reset_demo", dict(sms_enabled=sms_enabled), lambda: db.reset(sms_enabled))
+
+
+class StaticKeyValidator:
+    """Accepts exactly one API key (constant-time compare); same interface as ``DatabaseManager``."""
+
+    def __init__(self, key: str):
+        self._key = key.encode("utf-8")
+
+    def validate_key(self, api_key: Optional[str]) -> bool:
+        return api_key is not None and secrets.compare_digest(api_key.encode("utf-8"), self._key)
+
+
+class CvsDemoDeskMCPServer(AuthenticatedMCPServer):
+    """
+    MCP server for the transfer target's desk (MCP prefix ``cvs_demo_desk``): only
+    ``get_latest_handoff``, over the same demo database as ``cvs_demo_systems``.
+
+    It lives on its own path so the hand-off lookup is not reachable with the key
+    Savvy's tools use. With ``CVS_DEMO_DESK_API_KEY`` set it accepts only that key;
+    unset, it falls back to the shared keys (``MCP_DB_PATH``).
+    """
+
+    def __init__(self, db_path: Optional[str] = None, cvs_demo_db_path: Optional[str] = None,
+                 desk_api_key: Optional[str] = None):
+        """
+        Args:
+            db_path: shared API-key database path (see ``AuthenticatedMCPServer``).
+            cvs_demo_db_path: demo database path (default: ``CVS_DEMO_DB_PATH``).
+            desk_api_key: the only key accepted (default: ``CVS_DEMO_DESK_API_KEY``;
+                empty means the shared keys).
+        """
+        self.demo_db = open_database(cvs_demo_db_path)
+        super().__init__(name="CvsDemoDeskMCP", db_path=db_path)
+        key = (desk_api_key if desk_api_key is not None else os.environ.get(DESK_API_KEY_ENV, "")).strip()
+        self.own_key = bool(key)
+        if key:
+            self._http_middleware = [StarletteMiddleware(ApiKeyMiddleware, db_manager=StaticKeyValidator(key))]
+
+    def _register_tools(self) -> None:
+        db = self.demo_db
+
+        @self.mcp.tool(description=(
+            "For the agent that takes a transferred call: the context of the most recent escalation from a "
+            "colleague verified in the last within_minutes (default 10), with no input needed. Returned once: "
+            "a second call gets found=false. Gives the colleague's first name, the reason "
+            "(colleague_relations | payroll | other), the open Payroll and confidential Colleague Relations "
+            "case numbers (spoken), the pay outcome, a one-sentence concern summary and a display line to "
+            "open the call."))
+        def get_latest_handoff(within_minutes: int = HANDOFF_WINDOW_MINUTES) -> dict:
+            """
+            Demo shortcut: the demo transfer carries no EMPLID, so the most recent escalation in the
+            single demo tenant wins. In production the context travels with the call (SIP header /
+            UUI, or the CCaaS API keyed to the call). Never returns the full EMPLID, a phone number
+            or the date of birth; it marks the hand-off consumed and otherwise changes nothing.
+
+            Returns:
+                found, reason, first_name, colleague_name, emplid_last4, call_reason, pay_case_id,
+                pay_case_spoken, pay_outcome, pay_outcome_display, cr_case_id, cr_case_spoken,
+                concern_summary, minutes_ago, within_minutes, display.
+            """
+            return db.audited("get_latest_handoff", dict(within_minutes=within_minutes),
+                              lambda: db.get_latest_handoff(within_minutes))
 
 
 __getattr__ = lazy_module_instances(CvsDemoSystemsMCPServer)

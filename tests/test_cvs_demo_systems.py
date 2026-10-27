@@ -18,8 +18,10 @@ import pytest
 from fastmcp import Client
 
 from mcp_server_kit import cvs_demo_database as demo
-from mcp_server_kit.cvs_demo_database import CvsDemoDatabase, open_database, parse_dob, spoken_digits
-from mcp_server_kit.cvs_demo_systems import CvsDemoSystemsMCPServer, twilio_sender
+from mcp_server_kit.cvs_demo_database import (CvsDemoDatabase, handoff_text, open_database, parse_dob,
+                                              spoken_digits)
+from mcp_server_kit.cvs_demo_systems import (CvsDemoDeskMCPServer, CvsDemoSystemsMCPServer, StaticKeyValidator,
+                                             twilio_sender)
 
 JEFF = "2217203"
 DOB = "1991-03-14"
@@ -80,7 +82,7 @@ async def test_lists_every_brief_tool(server):
         "verify_emplid_dob", "send_otp", "verify_otp", "get_timecard", "get_pay_results",
         "resolve_short_pay", "get_absence_balances", "list_absence_types", "submit_time_off",
         "get_open_cases", "create_case", "update_case", "send_sms", "save_call_context",
-        "get_call_context", "get_latest_handoff", "reset_demo",
+        "get_call_context", "reset_demo",
     }
 
 
@@ -703,8 +705,19 @@ def clock(monkeypatch):
     return Clock(monkeypatch)
 
 
-CR_SUMMARY = ("Colleague says Roberta L. approves timecards and everyone else on the team was approved; "
-              "colleague says they raised concerns with Dana K. a few weeks ago.")
+@pytest.fixture
+def desk(tmp_path, server, monkeypatch):
+    monkeypatch.delenv("CVS_DEMO_DESK_API_KEY", raising=False)
+    return CvsDemoDeskMCPServer(db_path=str(tmp_path / "keys.db"), cvs_demo_db_path=str(tmp_path / "demo.db"))
+
+
+CR_SUMMARY = ("Colleague says Roberta L. approves timecards and everyone else on the team was approved, "
+              "and that they raised concerns with Dana K. a few weeks ago.")
+
+
+def peek(db, **kw):
+    """Look without consuming (tests only; the MCP tool always consumes)."""
+    return db.get_latest_handoff(consume=False, **kw)
 
 
 def jeff_escalation(db, clock):
@@ -715,7 +728,8 @@ def jeff_escalation(db, clock):
     pay = db.create_case(JEFF, "Payroll", "22 hours not approved before payroll closed")
     db.resolve_short_pay(JEFF, "next_check")
     clock.advance(minutes=2)
-    cr = db.create_case(JEFF, "Colleague Relations", CR_SUMMARY, restricted=True)
+    cr = db.create_case(JEFF, "Colleague Relations", CR_SUMMARY + " Second sentence with more detail.",
+                        restricted=True)
     clock.advance(minutes=3)
     return pay, cr
 
@@ -725,11 +739,18 @@ class TestHandoff:
     DAVE, MIKE = demo.TESTERS
 
     @pytest.mark.asyncio
-    async def test_jeff_escalation_over_mcp(self, server, db, clock):
+    async def test_tool_lives_only_on_the_desk_server(self, server, desk):
+        async with Client(desk.mcp) as client:
+            assert {t.name for t in await client.list_tools()} == {"get_latest_handoff"}
+        async with Client(server.mcp) as client:
+            assert "get_latest_handoff" not in {t.name for t in await client.list_tools()}
+
+    @pytest.mark.asyncio
+    async def test_jeff_escalation_over_mcp_is_returned_once(self, desk, db, clock):
         pay, cr = jeff_escalation(db, clock)
         before = db.status()["counts"]
-        r = await call(server, "get_latest_handoff")
-        assert r["found"] is True and r["reason"] == "colleague_relations"
+        r = await call(desk, "get_latest_handoff")
+        assert r["found"] is True and r["reason"] == "colleague_relations" and r["within_minutes"] == 10
         assert (r["first_name"], r["colleague_name"], r["emplid_last4"]) == ("Jeff", "Jeff M.", "7203")
         assert r["pay_case_id"] == pay["case_id"] and r["cr_case_id"] == cr["case_id"]
         assert r["pay_case_spoken"] == pay["case_id_spoken"] == "H R C zero zero nine, eight five six, two"
@@ -738,19 +759,30 @@ class TestHandoff:
         assert r["pay_outcome_display"] == ("The 22 hours will be paid on your next regular check on "
                                             "Friday, October 23rd.")
         assert r["call_reason"] == "Short check for the period ending October 3rd"
-        assert r["concern_summary"] == CR_SUMMARY and r["minutes_ago"] == 3
+        assert r["concern_summary"] == CR_SUMMARY and r["minutes_ago"] == 3  # first sentence only
         assert r["display"] == (
             "Jeff, you just spoke with Savvy about your short check for the period ending October 3rd. "
             f"Payroll case {pay['case_id_spoken']} is open, and your confidential Colleague Relations case "
             f"{cr['case_id_spoken']} is open. The 22 hours will be paid on your next regular check on "
             "Friday, October 23rd. The case notes say: " + CR_SUMMARY.rstrip(".") + ".")
-        # Read-only: nothing changed except the audit row.
+        # Consumed: a second read in the window finds nothing; nothing else changed.
+        assert (await call(desk, "get_latest_handoff"))["found"] is False
         assert db.status()["counts"] == before
-        assert db.list_audit_events(1)[0]["tool"] == "get_latest_handoff"
+        assert [e["tool"] for e in db.list_audit_events(2)] == ["get_latest_handoff"] * 2
+
+    def test_a_newer_escalation_after_consumption_is_returned(self, db, clock):
+        verify(db)
+        db.create_case(JEFF, "Payroll", "short check")
+        assert db.get_latest_handoff()["reason"] == "payroll"
+        assert db.get_latest_handoff()["found"] is False
+        clock.advance(minutes=1)
+        cr = db.create_case(JEFF, "Colleague Relations", CR_SUMMARY)
+        assert db.get_latest_handoff()["cr_case_id"] == cr["case_id"]
+        assert db.get_latest_handoff()["found"] is False
 
     def test_not_found(self, db, clock):
         r = db.get_latest_handoff()
-        assert r == {"found": False, "within_minutes": 20, "display": "I don't see a recent hand-off."}
+        assert r == {"found": False, "within_minutes": 10, "display": "I don't see a recent hand-off."}
 
     def test_other_team_cases_are_never_a_handoff(self, db, clock):
         verify(db)
@@ -760,14 +792,29 @@ class TestHandoff:
     def test_window_boundary(self, db, clock):
         verify(db)
         db.create_case(JEFF, "Payroll", "short check")
-        clock.advance(minutes=20)
-        r = db.get_latest_handoff()
-        assert r["found"] is True and r["minutes_ago"] == 20  # exactly 20 minutes: still in
+        clock.advance(minutes=10)
+        r = peek(db)
+        assert r["found"] is True and r["minutes_ago"] == 10  # exactly 10 minutes: still in
         clock.advance(seconds=1)
+        assert peek(db)["found"] is False
+        assert peek(db, within_minutes=30)["found"] is True
+        assert peek(db, within_minutes="bad")["within_minutes"] == 10
+        assert peek(db, within_minutes=0)["within_minutes"] == 1
+
+    def test_only_a_recently_verified_colleague_qualifies(self, db, clock):
+        verify(db)
+        clock.advance(minutes=11)  # still verified for Savvy (2 hours), but not within the 10-minute window
+        db.create_case(JEFF, "Colleague Relations", CR_SUMMARY)
+        db.save_call_context(emplid=JEFF, summary="pay short")
+        assert peek(db)["found"] is False
+        assert peek(db, within_minutes=15)["found"] is True
+        verify(db)  # re-verified now
+        assert peek(db)["found"] is True
+
+    def test_unverified_checkpoint_is_never_a_handoff(self, db, clock):
+        db.save_call_context(ani=demo.JEFF["mobile"], summary="Says the paycheck was short")  # linked by ANI only
+        db.save_call_context(ani="+15550109999", summary="Hung up before giving an ID")
         assert db.get_latest_handoff()["found"] is False
-        assert db.get_latest_handoff(within_minutes=30)["found"] is True
-        assert db.get_latest_handoff(within_minutes="bad")["within_minutes"] == 20
-        assert db.get_latest_handoff(within_minutes=0)["within_minutes"] == 1
 
     def test_cr_case_preferred_over_payroll(self, db, clock):
         verify(db)
@@ -800,37 +847,34 @@ class TestHandoff:
     def test_call_context_only_fallback(self, db, clock):
         verify(db)
         db.save_call_context(emplid=JEFF, summary="Asked how to request time off.")
-        db.save_call_context(ani="+15550109999")  # no summary: never chosen
         r = db.get_latest_handoff()
         assert r["found"] is True and r["reason"] == "other" and r["first_name"] == "Jeff"
         assert r["call_reason"] == "Asked how to request time off."
         assert r["pay_case_id"] == r["cr_case_id"] == ""
         assert r["display"] == ("Jeff, you just spoke with Savvy. The note from that call says: "
                                 "Asked how to request time off.")
-
-    def test_call_context_from_unknown_number(self, db, clock):
-        db.save_call_context(ani="+15550109999", summary="Hung up before giving an ID")
-        r = db.get_latest_handoff()
-        assert r["reason"] == "other" and r["first_name"] == "" and r["emplid_last4"] == ""
-        assert r["display"].startswith("You just spoke with Savvy.")
+        assert db.get_latest_handoff()["found"] is False
 
     def test_old_call_context_is_ignored(self, db, clock):
         verify(db)
         db.save_call_context(emplid=JEFF, summary="pay short")
-        clock.advance(minutes=21)
+        clock.advance(minutes=11)
         assert db.get_latest_handoff()["found"] is False
 
-    def test_masking(self, db, clock):
+    def test_no_pii_in_any_field(self, db, clock):
         verify(db)
         db.save_call_context(emplid=JEFF, ani="+15550104417",
-                             summary="Jeff 2217203 can be reached at 555-010-4417")
+                             summary="Jeff 2217203, born 03/14/1991, can be reached at 555-010-4417")
         db.create_case(JEFF, "Payroll", "EMPLID 2217203 short check")
-        db.create_case(JEFF, "Colleague Relations", "Call back at +1 555 010 4417 about Dana K.")
+        db.create_case(JEFF, "Colleague Relations",
+                       "Born March 14, 1991, call back at +1 555 010 4417 about Dana K. " + "x" * 300)
         r = db.get_latest_handoff()
         flat = json.dumps(r)
-        assert JEFF not in flat and "5550104417" not in flat and "010-4417" not in flat
-        assert "010 4417" not in flat and r["emplid_last4"] == "7203"
-        assert "emplid" not in r and not any("mobile" in k or "phone" in k for k in r)
+        for leak in (JEFF, "5550104417", "010-4417", "010 4417", "1991", "03/14", "March 14"):
+            assert leak not in flat, leak
+        assert r["emplid_last4"] == "7203" and "emplid" not in r
+        assert not any("mobile" in k or "phone" in k or "dob" in k for k in r)
+        assert len(r["concern_summary"]) <= demo.HANDOFF_TEXT_MAX and len(r["call_reason"]) <= demo.HANDOFF_TEXT_MAX
 
     def test_newest_colleague_wins(self, db, clock):
         verify(db)
@@ -856,11 +900,15 @@ class TestHandoff:
         assert db.get_latest_handoff()["first_name"] == "Jeff"
 
     @pytest.mark.asyncio
-    async def test_reset_demo_clears_it(self, server, db, clock):
+    async def test_reset_demo_clears_it(self, server, desk, db, clock):
         jeff_escalation(db, clock)
-        assert (await call(server, "get_latest_handoff"))["found"] is True
+        assert (await call(desk, "get_latest_handoff"))["found"] is True
+        with db._conn() as conn:
+            assert conn.execute("SELECT COUNT(*) FROM handoffs_consumed").fetchone()[0] == 1
         await call(server, "reset_demo")
-        assert (await call(server, "get_latest_handoff"))["found"] is False
+        with db._conn() as conn:
+            assert conn.execute("SELECT COUNT(*) FROM handoffs_consumed").fetchone()[0] == 0
+        assert (await call(desk, "get_latest_handoff"))["found"] is False
 
     def test_existing_file_gains_created_at(self, tmp_path):
         path = str(tmp_path / "old.db")
@@ -873,3 +921,46 @@ class TestHandoff:
         with db._conn() as c:
             assert "created_at" in {r["name"] for r in c.execute("PRAGMA table_info(cases)")}
         assert db.get_latest_handoff()["found"] is False
+
+
+def test_handoff_text():
+    assert handoff_text("Talked to Dana K. last week. Then more.") == "Talked to Dana K. last week."
+    assert handoff_text("  no   end punctuation ") == "no end punctuation"
+    assert handoff_text("DOB 1991-03-14 and 3/14/91 and Mar 14th 1991.") == "DOB a date and a date and a date."
+    assert handoff_text("Call 312-555-0142.") == "Call ******0142."
+    cut = handoff_text("word " * 100)
+    assert len(cut) <= demo.HANDOFF_TEXT_MAX and cut.endswith("word.")
+    assert handoff_text("") == ""
+
+
+class TestDeskKey:
+
+    def _validator(self, srv):
+        return srv._http_middleware[0].kwargs["db_manager"]
+
+    def test_shared_keys_by_default(self, desk):
+        assert desk.own_key is False and self._validator(desk) is desk.db_manager
+
+    def test_own_key_from_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CVS_DEMO_DESK_API_KEY", " desk-secret ")
+        srv = CvsDemoDeskMCPServer(db_path=str(tmp_path / "k.db"), cvs_demo_db_path=str(tmp_path / "d.db"))
+        check = self._validator(srv)
+        assert srv.own_key is True and isinstance(check, StaticKeyValidator)
+        assert check.validate_key("desk-secret") is True
+        assert check.validate_key("other") is False and check.validate_key(None) is False
+
+    def test_explicit_key_overrides_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CVS_DEMO_DESK_API_KEY", "from-env")
+        srv = CvsDemoDeskMCPServer(db_path=str(tmp_path / "k.db"), cvs_demo_db_path=str(tmp_path / "d.db"),
+                                   desk_api_key="")
+        assert srv.own_key is False
+
+    def test_http_rejects_the_shared_key_when_own_key_set(self, tmp_path):
+        from starlette.testclient import TestClient
+        srv = CvsDemoDeskMCPServer(db_path=str(tmp_path / "k.db"), cvs_demo_db_path=str(tmp_path / "d.db"),
+                                   desk_api_key="desk-secret")
+        shared = sqlite3.connect(str(tmp_path / "k.db")).execute("SELECT key FROM api_keys").fetchone()[0]
+        app = srv.mcp.http_app(path="/mcp", middleware=srv._http_middleware, transport="streamable-http")
+        with TestClient(app) as client:
+            assert client.post("/mcp", headers={"X-API-Key": shared}, json={}).status_code == 401
+            assert client.post("/mcp", headers={"X-API-Key": "desk-secret"}, json={}).status_code != 401

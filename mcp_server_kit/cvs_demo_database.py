@@ -57,7 +57,8 @@ OTP_TTL_SECONDS = 300
 OTP_MAX_TRIES = 3
 VERIFICATION_TTL_MINUTES = 120
 RECALL_WINDOW_MINUTES = 30
-HANDOFF_WINDOW_MINUTES = 20
+HANDOFF_WINDOW_MINUTES = 10
+HANDOFF_TEXT_MAX = 200
 FIRST_CASE_SEQ = 98562
 FIRST_TIME_OFF_SEQ = 410221
 
@@ -141,11 +142,12 @@ CREATE TABLE IF NOT EXISTS call_context (
     summary_verified INTEGER DEFAULT 0, token TEXT);
 CREATE TABLE IF NOT EXISTS audit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT, tool TEXT, args TEXT, result TEXT, at TEXT, status TEXT);
+CREATE TABLE IF NOT EXISTS handoffs_consumed (key TEXT PRIMARY KEY, consumed_at TEXT);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
 _CASE_COLUMNS = "case_id, emplid, team, case_type, summary, restricted, state, opened_on, notes"
 _DATA_TABLES = ("colleagues", "balances", "time_off", "cases", "pay_resolutions", "verifications",
-                "otps", "call_context", "audit_events", "meta")
+                "otps", "call_context", "handoffs_consumed", "audit_events", "meta")
 
 
 # ---------------------------------------------------------------------------
@@ -879,22 +881,41 @@ class CvsDemoDatabase:
 
     # ----------------------------------------------------------------- hand-off
 
-    def get_latest_handoff(self, within_minutes: Any = HANDOFF_WINDOW_MINUTES) -> dict:
+    def get_latest_handoff(self, within_minutes: Any = HANDOFF_WINDOW_MINUTES, consume: bool = True) -> dict:
         """
         The context of the most recent escalation, for the agent that takes a
-        transferred call (Sam, Colleague Relations). Read-only, derived from the
-        cases, pay resolutions and call checkpoints written during Savvy's call.
+        transferred call (Sam, Colleague Relations).
 
-        Single-demo-tenant shortcut: the transfer arrives with no EMPLID, so the
-        most recent escalation across all colleagues wins. The colleague is the
-        one with the newest Colleague Relations or Payroll case created in the
-        last ``within_minutes``; their Colleague Relations case, when there is
-        one, makes the reason ``colleague_relations``, else ``payroll``. With no
-        such case, the newest call checkpoint with a summary gives reason
-        ``other``. A real contact center would carry this context with the
-        transfer (SIP header / UUI) instead of looking it up.
+        DEMO SHORTCUT, NOT A PRODUCTION PATTERN. The demo transfer arrives with
+        no EMPLID or call ID, so this looks the context up: the most recent
+        escalation across all colleagues in the single demo tenant wins. In
+        production the context travels with the call itself, in the SIP header
+        / UUI or through the CCaaS API keyed to that call, and no lookup like
+        this exists.
 
-        Never returns the full EMPLID or a phone number; free text is masked.
+        To narrow the exposure of that shortcut:
+
+        - Only a colleague verified (EMPLID + DOB or SMS code) within the last
+          ``within_minutes`` (default 10) qualifies, and only for cases created
+          or checkpoints saved in that same window.
+        - A hand-off is returned once: the first read marks it consumed
+          (``handoffs_consumed``) and every later read gets ``found: false``
+          until a newer escalation arrives or ``reset`` clears it.
+        - Free text (``call_reason``, ``concern_summary``) is cut to its first
+          sentence, at most ``HANDOFF_TEXT_MAX`` characters, with digit runs
+          and dates masked. The full EMPLID, phone numbers and the date of
+          birth are never returned.
+
+        Which escalation: the verified colleague with the newest Colleague
+        Relations or Payroll case in the window; their Colleague Relations case,
+        when there is one, makes the reason ``colleague_relations``, else
+        ``payroll``. With no such case, the newest call checkpoint with a
+        summary from a verified colleague gives reason ``other``.
+
+        Args:
+            within_minutes: the window, in minutes (minimum 1).
+            consume: mark the hand-off picked up (the MCP tool always does;
+                False is for tests and operator diagnostics only).
         """
         try:
             minutes = max(1, int(within_minutes))
@@ -902,43 +923,44 @@ class CvsDemoDatabase:
             minutes = HANDOFF_WINDOW_MINUTES
         now = _utcnow()
         since = _iso(now - timedelta(minutes=minutes))
+        not_found = {"found": False, "within_minutes": minutes, "display": "I don't see a recent hand-off."}
+        verified = ("SELECT emplid FROM verifications WHERE verified_at>=?")
         with self._conn() as conn:
-            def newest_case(team: str, emplid: str = "") -> Optional[sqlite3.Row]:
-                who = " AND emplid=?" if emplid else ""
-                return conn.execute(f"SELECT * FROM cases WHERE team=? AND created_at>=?{who} "
+            def newest_case(team: str, emplid: str) -> Optional[sqlite3.Row]:
+                return conn.execute("SELECT * FROM cases WHERE team=? AND emplid=? AND created_at>=? "
                                     "ORDER BY created_at DESC, case_id DESC LIMIT 1",
-                                    (team, since, *([emplid] if emplid else []))).fetchone()
+                                    (team, emplid, since)).fetchone()
 
             latest = conn.execute("SELECT * FROM cases WHERE team IN ('Colleague Relations', 'Payroll') "
-                                  "AND created_at>=? ORDER BY created_at DESC, case_id DESC LIMIT 1",
-                                  (since,)).fetchone()
+                                  f"AND created_at>=? AND emplid IN ({verified}) "
+                                  "ORDER BY created_at DESC, case_id DESC LIMIT 1", (since, since)).fetchone()
             if latest is not None:
                 emplid = latest["emplid"]
                 cr, pay = newest_case("Colleague Relations", emplid), newest_case("Payroll", emplid)
                 ctx = conn.execute("SELECT * FROM call_context WHERE emplid=? AND summary!='' AND updated_at>=? "
                                    "ORDER BY updated_at DESC, id DESC LIMIT 1", (emplid, since)).fetchone()
-                anchor = max(r["created_at"] for r in (cr, pay) if r is not None)
+                anchor, key = latest["created_at"], f"case:{latest['case_id']}"
             else:
                 cr = pay = None
                 ctx = conn.execute("SELECT * FROM call_context WHERE summary!='' AND updated_at>=? "
-                                   "ORDER BY updated_at DESC, id DESC LIMIT 1", (since,)).fetchone()
+                                   f"AND emplid IN ({verified}) ORDER BY updated_at DESC, id DESC LIMIT 1",
+                                   (since, since)).fetchone()
                 if ctx is None:
-                    return {"found": False, "within_minutes": minutes,
-                            "display": "I don't see a recent hand-off."}
-                emplid, anchor = ctx["emplid"], ctx["updated_at"]
-            colleague = (self._colleague(conn, emplid) if emplid
-                         else self._colleague_by_ani(conn, ctx["ani"]) if ctx is not None else None)
-            resolution = (conn.execute("SELECT * FROM pay_resolutions WHERE emplid=?", (colleague["emplid"],))
-                          .fetchone() if colleague is not None else None)
+                    return not_found
+                emplid, anchor, key = ctx["emplid"], ctx["updated_at"], f"context:{ctx['id']}"
+            if conn.execute("SELECT 1 FROM handoffs_consumed WHERE key=?", (key,)).fetchone() is not None:
+                return not_found
+            if consume:
+                conn.execute("INSERT INTO handoffs_consumed VALUES (?, ?)", (key, _iso(now)))
+            colleague = self._colleague(conn, emplid)
+            resolution = conn.execute("SELECT * FROM pay_resolutions WHERE emplid=?", (emplid,)).fetchone()
         reason = "colleague_relations" if cr else "payroll" if pay else "other"
-        first = colleague["first_name"] if colleague else ""
-        call_reason = rules.mask_digit_runs(ctx["summary"], keep=4) if ctx is not None else ""
-        concern = rules.mask_digit_runs(cr["summary"], keep=4) if cr is not None else ""
+        first = colleague["first_name"]
+        call_reason = handoff_text(ctx["summary"]) if ctx is not None else ""
+        concern = handoff_text(cr["summary"]) if cr is not None else ""
         result = {
-            "found": True, "reason": reason, "first_name": first,
-            "colleague_name": colleague["display_name"] if colleague else "",
-            "emplid_last4": colleague["emplid"][-4:] if colleague else "",
-            "call_reason": call_reason,
+            "found": True, "reason": reason, "first_name": first, "colleague_name": colleague["display_name"],
+            "emplid_last4": emplid[-4:], "call_reason": call_reason,
             "pay_case_id": pay["case_id"] if pay else "",
             "pay_case_spoken": f"H R C {spoken_digits(pay['case_id'])}" if pay else "",
             "cr_case_id": cr["case_id"] if cr else "",
@@ -954,12 +976,11 @@ class CvsDemoDatabase:
             result["pay_outcome_display"] = (
                 f"The {rules.hours_display_en(resolution['hours'])} will be paid {how} on "
                 f"{rules.date_display_en(date.fromisoformat(resolution['pay_date']))}.")
-        opener = f"{first}, you" if first else "You"
         if pay is not None or cr is not None:
             period = rules.date_display_en(PERIOD["end"]).split(", ", 1)[1]
-            parts = [f"{opener} just spoke with Savvy about your short check for the period ending {period}."]
+            parts = [f"{first}, you just spoke with Savvy about your short check for the period ending {period}."]
         else:  # a checkpoint is only chosen when it has a summary
-            parts = [f"{opener} just spoke with Savvy. The note from that call says: {call_reason.rstrip('.')}."]
+            parts = [f"{first}, you just spoke with Savvy. The note from that call says: {call_reason.rstrip('.')}."]
         if pay is not None and cr is not None:
             parts.append(f"Payroll case {result['pay_case_spoken']} is open, and your confidential Colleague "
                          f"Relations case {result['cr_case_spoken']} is open.")
@@ -973,6 +994,31 @@ class CvsDemoDatabase:
             parts.append(f"The case notes say: {concern.rstrip('.')}.")
         result["display"] = " ".join(parts)
         return result
+
+
+_SENTENCE_END = re.compile(r"(?<!\b[A-Z])[.!?](?=\s|$)")  # "Dana K. said" is one sentence
+_MONTHS = ("january|february|march|april|may|june|july|august|september|october|november|december|"
+           "jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec")
+_DATE_LIKE = re.compile(
+    rf"\b\d{{1,4}}[/-]\d{{1,2}}[/-]\d{{1,4}}\b|\b(?:{_MONTHS})\.?\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+\d{{4}}\b",
+    re.IGNORECASE)
+
+
+def handoff_text(text: str, limit: Optional[int] = None) -> str:
+    """
+    Free text made safe to hand to another agent: the first sentence only, at
+    most ``HANDOFF_TEXT_MAX`` characters (cut at a word), full dates such as a
+    date of birth replaced with "a date", and digit runs masked to the last 4.
+    """
+    limit = limit or HANDOFF_TEXT_MAX
+    text = " ".join(str(text or "").split())
+    end = _SENTENCE_END.search(text)
+    if end:
+        text = text[:end.end()]
+    text = rules.mask_digit_runs(_DATE_LIKE.sub("a date", text), keep=4)
+    if len(text) > limit:
+        text = text[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "."
+    return text
 
 
 def default_db_path() -> str:

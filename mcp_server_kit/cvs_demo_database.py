@@ -71,6 +71,19 @@ SHORT_CHECK = date(2026, 10, 9)
 NEXT_CHECK = date(2026, 10, 23)
 LEAVE = (date(2026, 10, 5), date(2026, 10, 16))
 BENEFITS_CASE = "HRC0098561"
+
+# Extra testers who call from their own phones. They share Jeff's pay and time-off story (the
+# PERIOD / SHORT_CHECK / BALANCES constants) but have their own identity, open benefits case,
+# verification and call history; their mobile on file is the number they call from.
+TESTERS = [
+    {"emplid": "4420917", "first_name": "Dave", "display_name": "Dave G.", "dob": "1985-05-09",
+     "mobile": "+14085040880", "job_title": "Pharmacy Technician", "store": "4471",
+     "manager": "Marcus T.", "second_level_leader": "Elena V.", "benefits_case": "HRC0098502"},
+    {"emplid": "3318506", "first_name": "Mike", "display_name": "Mike A.", "dob": "1988-07-22",
+     "mobile": "+19253486832", "job_title": "Pharmacy Technician", "store": "5390",
+     "manager": "Priya S.", "second_level_leader": "Tom R.", "benefits_case": "HRC0098501"},
+]
+COLLEAGUES = [{**JEFF, "benefits_case": BENEFITS_CASE}] + TESTERS
 BALANCES = {"pto": 24.0, "sick": 16.0, "floating_holiday": 8.0}
 ACCRUAL_PER_PERIOD = 6.15
 
@@ -281,15 +294,16 @@ class CvsDemoDatabase:
         return self.status()
 
     def _seed(self, conn: sqlite3.Connection) -> None:
-        conn.execute("INSERT INTO colleagues VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                     tuple(JEFF[k] for k in ("emplid", "first_name", "display_name", "dob", "mobile",
-                                             "job_title", "store", "manager", "second_level_leader")))
-        for kind, hours in BALANCES.items():
-            conn.execute("INSERT INTO balances VALUES (?, ?, ?)", (JEFF["emplid"], kind, hours))
         opened = as_of_date() - timedelta(days=2)
-        conn.execute("INSERT INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                     (BENEFITS_CASE, JEFF["emplid"], "Benefits", "benefits_question",
-                      "Dental enrollment question", 0, "work_in_progress", opened.isoformat(), "[]"))
+        for person in COLLEAGUES:
+            conn.execute("INSERT INTO colleagues VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                         tuple(person[k] for k in ("emplid", "first_name", "display_name", "dob", "mobile",
+                                                   "job_title", "store", "manager", "second_level_leader")))
+            for kind, hours in BALANCES.items():
+                conn.execute("INSERT INTO balances VALUES (?, ?, ?)", (person["emplid"], kind, hours))
+            conn.execute("INSERT INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                         (person["benefits_case"], person["emplid"], "Benefits", "benefits_question",
+                          "Dental enrollment question", 0, "work_in_progress", opened.isoformat(), "[]"))
         for key, value in (("case_seq", FIRST_CASE_SEQ), ("time_off_seq", FIRST_TIME_OFF_SEQ),
                            ("seeded_on", as_of_date().isoformat())):
             conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, str(value)))

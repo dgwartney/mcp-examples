@@ -538,11 +538,12 @@ class TestReset:
         db.create_case(JEFF, "Payroll", "x")
         db.submit_time_off(JEFF, "pto", "2026-11-02", days=1)
         status = await call(server, "reset_demo", status_only=True)
-        assert status["counts"]["cases"] == 2 and status["sms_enabled"] is False
+        seeded = len(demo.COLLEAGUES)  # one open benefits case per seeded colleague
+        assert status["counts"]["cases"] == seeded + 1 and status["sms_enabled"] is False
 
         monkeypatch.setenv("CVS_DEMO_AS_OF", "2026-10-28")
         r = await call(server, "reset_demo")
-        assert r["counts"] == {"cases": 1, "time_off": 0, "pay_resolutions": 0, "verifications": 0,
+        assert r["counts"] == {"cases": seeded, "time_off": 0, "pay_resolutions": 0, "verifications": 0,
                                "call_context": 0}
         assert r["benefits_case_opened"] == "2026-10-26" and r["benefits_case_weekday"] == "Monday"
         assert not db.is_verified(JEFF)
@@ -563,7 +564,7 @@ class TestReset:
         first.create_case(JEFF, "Payroll", "x")
         monkeypatch.setenv("CVS_DEMO_AS_OF", "2026-11-30")
         again = open_database(path)
-        assert again.status()["counts"]["cases"] == 2
+        assert again.status()["counts"]["cases"] == len(demo.COLLEAGUES) + 1
         assert again.status()["benefits_case_opened"] == "2026-10-25"
 
     def test_default_path_and_as_of(self, tmp_path, monkeypatch):
@@ -572,6 +573,53 @@ class TestReset:
         monkeypatch.delenv("CVS_DEMO_AS_OF")
         assert demo.as_of_date() == datetime.now(demo.DEMO_TZ).date()
         assert CvsDemoDatabase().db_path == "cvs_demo.db"
+
+
+# ---------------------------------------------------------------------------
+# Extra testers on their own phones
+# ---------------------------------------------------------------------------
+
+class TestTesters:
+
+    DAVE = demo.TESTERS[0]
+
+    def test_every_tester_is_seeded_with_their_own_case(self, db):
+        verify(db)
+        assert db.get_open_cases(JEFF)["case_ids"] == [demo.BENEFITS_CASE]
+        for t in demo.TESTERS:
+            assert db.verify_emplid_dob(t["emplid"], t["dob"])["verified"] is True
+            assert db.get_open_cases(t["emplid"])["case_ids"] == [t["benefits_case"]]
+            assert db.get_absence_balances(t["emplid"])["balances"][0]["hours"] == 24.0
+
+    def test_ids_numbers_cases_and_managers_are_distinct(self):
+        managers = [c["manager"] for c in demo.COLLEAGUES]
+        assert len(set(managers)) == len(managers)
+        emplids = [c["emplid"] for c in demo.COLLEAGUES]
+        cases = [c["benefits_case"] for c in demo.COLLEAGUES]
+        mobiles = [c["mobile"] for c in demo.COLLEAGUES]
+        assert len(set(emplids)) == len(emplids) and all(len(e) == 7 for e in emplids)
+        assert len(set(cases)) == len(cases) and len(set(mobiles)) == len(mobiles)
+        # Seeded cases sit below the running sequence, so new cases never collide with them.
+        assert all(int(c[3:]) < demo.FIRST_CASE_SEQ for c in cases)
+
+    def test_tester_is_recognised_by_their_own_number(self, db):
+        r = db.send_otp(ani=self.DAVE["mobile"])
+        assert r["sent"] is True and r["mobile_last4"] == self.DAVE["mobile"][-4:]
+        assert r["emplid_last4"] == self.DAVE["emplid"][-4:]
+
+    @pytest.mark.asyncio
+    async def test_tester_callback_greets_the_tester_not_jeff(self, server):
+        await call(server, "save_call_context", ani=self.DAVE["mobile"], summary="Says the paycheck was short")
+        own = await call(server, "save_call_context", ani=self.DAVE["mobile"], summary="I got cut off")
+        ctx = await call(server, "get_call_context", ani=self.DAVE["mobile"], exclude_context_id=own["context_id"])
+        assert ctx["found"] is True and ctx["first_name"] == "Dave"
+
+    def test_a_tester_case_does_not_touch_jeff(self, db):
+        db.verify_emplid_dob(self.DAVE["emplid"], self.DAVE["dob"])
+        verify(db)
+        db.create_case(self.DAVE["emplid"], "Payroll", "Timecard not approved")
+        assert db.get_open_cases(JEFF)["case_ids"] == [demo.BENEFITS_CASE]
+        assert db.get_open_cases(self.DAVE["emplid"])["count"] == 2
 
 
 def test_spoken_helpers():

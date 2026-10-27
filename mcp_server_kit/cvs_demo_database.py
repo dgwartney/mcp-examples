@@ -957,8 +957,9 @@ class CvsDemoDatabase:
             resolution = conn.execute("SELECT * FROM pay_resolutions WHERE emplid=?", (emplid,)).fetchone()
         reason = "colleague_relations" if cr else "payroll" if pay else "other"
         first = colleague["first_name"]
-        call_reason = handoff_text(ctx["summary"]) if ctx is not None else ""
-        concern = handoff_text(cr["summary"]) if cr is not None else ""
+        linked = [c["case_id"] for c in (pay, cr) if c is not None]
+        call_reason = handoff_text(ctx["summary"], linked) if ctx is not None else ""
+        concern = handoff_text(cr["summary"], linked) if cr is not None else ""
         result = {
             "found": True, "reason": reason, "first_name": first, "colleague_name": colleague["display_name"],
             "emplid_last4": emplid[-4:], "call_reason": call_reason,
@@ -1006,31 +1007,41 @@ _MONTH_DAY = re.compile(
     rf"\b(?:{_MONTHS})\.?\s+\d{{1,2}}{_ORD}\b{_YEAR}"          # March 14th, 1991
     rf"|\b\d{{1,2}}{_ORD}\s+(?:of\s+)?(?:{_MONTHS})\b{_YEAR}",  # 14 March 1991, 14th of March
     re.IGNORECASE)
-_CASE_ID = re.compile(r"\bHRC\d{7}\b", re.IGNORECASE)
-_DIGIT_RUN = re.compile(r"\d+(?:[\s./,\-]+\d+)*(?:st|nd|rd|th)?\b", re.IGNORECASE)
+_NUMBER_RUN = re.compile(r"\d+(?:[\s./,\-]+\d+)*(?:st|nd|rd|th)?", re.IGNORECASE)  # one phrase per number
 
 
-def handoff_text(text: str, limit: Optional[int] = None) -> str:
+def handoff_text(text: str, keep_ids: Any = (), limit: Optional[int] = None) -> str:
     """
-    Free text made safe to hand to another agent. HR case IDs (``HRC`` + 7
-    digits) are kept; every month-and-day date becomes "a date" and every
-    other digit run (EMPLIDs, phone numbers, years, numeric dates in any
-    separator) becomes "a number", so no form of a date of birth survives.
-    Then the first sentence only, at most ``HANDOFF_TEXT_MAX`` characters
-    (cut at a word).
+    Free text made safe to hand to another agent.
+
+    Only the case IDs linked to this hand-off (``keep_ids``) keep their digits.
+    Every month-and-day date becomes "a date", then every remaining digit,
+    wherever it sits (``03141991abc``, ``DOB:03/14/1991``, an unlinked
+    ``HRC1234567``), becomes "a number", so no rendering of a date of birth,
+    EMPLID or phone number survives. Then the first sentence only, at most
+    ``HANDOFF_TEXT_MAX`` characters (cut at a word). Guard: if any digit is
+    still present outside the kept IDs, the field is dropped (returns "").
     """
     limit = limit or HANDOFF_TEXT_MAX
     text = " ".join(str(text or "").split())
-    kept = _CASE_ID.findall(text)
-    text = _CASE_ID.sub("\x00", text)
-    text = _DIGIT_RUN.sub("a number", _MONTH_DAY.sub("a date", text))
-    for case_id in kept:
-        text = text.replace("\x00", case_id.upper(), 1)
+    kept = [str(c).upper() for c in keep_ids if c]
+    for i, case_id in enumerate(kept):
+        text = re.sub(rf"(?<![A-Za-z0-9]){re.escape(case_id)}(?![0-9])", f"\x00{chr(65 + i)}\x00", text,
+                      flags=re.IGNORECASE)
+    text = _MONTH_DAY.sub("a date", text)
+    text = re.sub(r"\d+", "a number", _NUMBER_RUN.sub("a number", text))
+    for i, case_id in enumerate(kept):
+        text = text.replace(f"\x00{chr(65 + i)}\x00", case_id)
     end = _SENTENCE_END.search(text)
     if end:
         text = text[:end.end()]
     if len(text) > limit:
         text = text[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "."
+    rest = text
+    for case_id in kept:
+        rest = rest.replace(case_id, "")
+    if "\x00" in rest or any(ch.isdigit() for ch in rest):  # e.g. superscript digits, which the regex misses
+        return ""
     return text
 
 

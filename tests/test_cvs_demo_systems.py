@@ -939,19 +939,31 @@ def test_handoff_text():
     assert handoff_text("  no   end punctuation ") == "no end punctuation"
     assert handoff_text("Call 312-555-0142.") == "Call a number."
     assert handoff_text("22 hours, the 14th of March.") == "a number hours, the a date."
-    assert handoff_text("Cases HRC0098563 and hrc0098562 are open.") == "Cases HRC0098563 and HRC0098562 are open."
     cut = handoff_text("word " * 100)
     assert len(cut) <= demo.HANDOFF_TEXT_MAX and cut.endswith("word.")
     assert handoff_text("") == ""
 
 
+def test_handoff_text_keeps_only_linked_case_ids():
+    linked = ["HRC0098563", "HRC0098562"]
+    out = handoff_text("Cases HRC0098563, hrc0098562 and HRC1234567 are open.", linked)
+    assert out == "Cases HRC0098563, HRC0098562 and HRCa number are open."
+    assert handoff_text("Case HRC0098563 is open.") == "Case HRCa number is open."  # nothing linked
+    assert handoff_text("Case XHRC00985631 is open.", linked) == "Case XHRCa number is open."
+
+
+def test_handoff_text_drops_a_field_with_any_digit_left():
+    assert handoff_text("Born ¹⁹⁹¹ in March.") == ""  # superscript digits escape \d; the guard drops it
+
+
 @pytest.mark.parametrize("dob", [
     "14 March 1991", "March 14th, 1991", "March 14 1991", "Mar. 14, 1991", "14th of March 1991",
     "3.14.1991", "03/14/1991", "3-14-91", "1991-03-14", "1991", "03141991", "19910314", "3 14 1991",
+    "03141991abc", "1991x", "x1991", "DOB:03/14/1991", "3/14/1991abc", "١٩٩١",
 ])
 def test_handoff_text_never_leaks_a_date_of_birth(dob):
-    out = handoff_text(f"Colleague (born {dob}) says HRC0098563 is about Dana K. and 2217203.")
-    assert not any(c.isdigit() for c in out.replace("HRC0098563", "")), out
+    out = handoff_text(f"Colleague (born {dob}) says HRC0098563 is about Dana K. and 2217203.", ["HRC0098563"])
+    assert out and not any(c.isdigit() for c in out.replace("HRC0098563", "")), out
     assert "March" not in out and "Mar." not in out and "HRC0098563" in out
 
 
